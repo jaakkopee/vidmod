@@ -3,7 +3,6 @@
 #include <string>
 #include <vector>
 #include <opencv2/opencv.hpp>
-#include "VideoBuffer.h"
 #include "AudioBuffer.h"
 #include "EffectChain.h"
 #include <memory>
@@ -12,7 +11,6 @@ class VideoProcessor {
 private:
     std::string videoPath;
     std::string audioPath;
-    std::unique_ptr<VideoBuffer> videoBuffer;
     std::unique_ptr<AudioBuffer> audioBuffer;
     float fps;
     int width;
@@ -27,6 +25,7 @@ public:
     bool loadAudio(const std::string& audioFile);
     
     cv::Mat getNextFrame();
+    cv::Mat getFrameAt(int frameIndex);
     void reset();
     
     float getFPS() const { return fps; }
@@ -34,10 +33,11 @@ public:
     int getHeight() const { return height; }
     int getTotalFrames() const { return totalFrames; }
     int getCurrentFrame() const { return currentFrame; }
+    const std::string& getVideoPath() const { return videoPath; }
     
     AudioBuffer* getAudioBuffer() { return audioBuffer.get(); }
     
-    bool saveProcessedVideo(const std::string& outputPath, EffectChain& effectChain);
+    bool saveProcessedVideo(const std::string& outputPath, EffectChain& effectChain, float durationSeconds = -1.0f);
     bool processImageLoop(const std::string& imagePath, const std::string& outputPath, 
                           EffectChain& effectChain, float durationSeconds, float targetFPS = 30.0f);
 };

@@ -565,15 +565,37 @@ void GUI::generatePreview() {
     }
     
     // Otherwise use video processor
-    videoProcessor.reset();
-    cv::Mat frame = videoProcessor.getNextFrame();
+    if (!videoProcessor.getAudioBuffer()) {
+        statusLabel->setText("No audio loaded");
+        return;
+    }
+    
+    // Calculate which video frame to show based on audio position
+    float audioDuration = static_cast<float>(videoProcessor.getAudioBuffer()->size()) / 
+                         videoProcessor.getAudioBuffer()->getSampleRate();
+    float targetTime = currentAudioPosition * audioDuration;
+    int targetFrame = static_cast<int>(targetTime * videoProcessor.getFPS());
+    
+    // Loop video if needed (if video is shorter than audio)
+    if (videoProcessor.getTotalFrames() > 0) {
+        targetFrame = targetFrame % videoProcessor.getTotalFrames();
+    }
+    
+    std::cout << "Preview at audio position " << currentAudioPosition 
+              << " (" << targetTime << "s, frame " << targetFrame << ")" << std::endl;
+    
+    cv::Mat frame = videoProcessor.getFrameAt(targetFrame);
     
     if (frame.empty()) {
-        statusLabel->setText("No video or image loaded");
+        statusLabel->setText("No video loaded");
         return;
     }
     
     statusLabel->setText("Generating preview...");
+    
+    // Set audio buffer position
+    size_t audioPos = static_cast<size_t>(currentAudioPosition * videoProcessor.getAudioBuffer()->size());
+    videoProcessor.getAudioBuffer()->setIndex(audioPos);
     
     cv::Mat processedFrame = effectChain.applyEffects(frame, videoProcessor.getAudioBuffer(), videoProcessor.getFPS());
     updatePreview(processedFrame);
@@ -592,50 +614,92 @@ void GUI::processVideo() {
         return;
     }
     
-    std::cout << "Opening file dialog for video processing" << std::endl;
+    std::cout << "Opening video processing dialog" << std::endl;
     
-    // Create a file dialog window
-    auto fileDialog = tgui::ChildWindow::create("Save Processed Video");
-    fileDialog->setSize("400", "150");
-    fileDialog->setPosition("(&.size - size) / 2");
+    // Create a dialog for video processing parameters (similar to image loop)
+    auto paramDialog = tgui::ChildWindow::create("Process Video");
+    paramDialog->setSize("450", "250");
+    paramDialog->setPosition("(&.size - size) / 2");
     
-    auto pathLabel = tgui::Label::create("Output file path:");
-    pathLabel->setPosition("5%", "10%");
-    pathLabel->setTextSize(14);
-    fileDialog->add(pathLabel);
+    // Show loaded video info
+    if (!videoProcessor.getVideoPath().empty()) {
+        auto videoLabel = tgui::Label::create("Video: " + videoProcessor.getVideoPath().substr(videoProcessor.getVideoPath().find_last_of("/\\") + 1));
+        videoLabel->setPosition("5%", "5%");
+        videoLabel->setTextSize(14);
+        paramDialog->add(videoLabel);
+    }
     
-    auto pathEdit = tgui::EditBox::create();
-    pathEdit->setSize("90%", "20%");
-    pathEdit->setPosition("5%", "30%");
-    pathEdit->setDefaultText("output.mp4");
-    fileDialog->add(pathEdit);
+    // Duration setting
+    auto durationLabel = tgui::Label::create("Duration (seconds):");
+    durationLabel->setPosition("5%", "15%");
+    durationLabel->setTextSize(14);
+    paramDialog->add(durationLabel);
     
-    auto saveBtn = tgui::Button::create("Save");
-    saveBtn->setSize("40%", "20%");
-    saveBtn->setPosition("5%", "70%");
-    saveBtn->onPress([this, fileDialog, pathEdit]() {
-        std::string path = pathEdit->getText().toStdString();
-        gui.remove(fileDialog);
-        
-        statusLabel->setText("Processing video...");
-        
-        if (videoProcessor.saveProcessedVideo(path, effectChain)) {
-            statusLabel->setText("Video saved: " + path.substr(path.find_last_of("/\\") + 1));
-        } else {
-            statusLabel->setText("Failed to save video");
+    auto durationEdit = tgui::EditBox::create();
+    durationEdit->setSize("90%", "12%");
+    durationEdit->setPosition("5%", "23%");
+    
+    // Calculate default duration from audio if available
+    std::string defaultDuration = "10.0";
+    if (videoProcessor.getAudioBuffer()) {
+        float audioDuration = static_cast<float>(videoProcessor.getAudioBuffer()->size()) / 
+                             videoProcessor.getAudioBuffer()->getSampleRate();
+        defaultDuration = std::to_string(audioDuration);
+    }
+    durationEdit->setText(defaultDuration);
+    paramDialog->add(durationEdit);
+    
+    // Output path
+    auto outputLabel = tgui::Label::create("Output path:");
+    outputLabel->setPosition("5%", "45%");
+    outputLabel->setTextSize(14);
+    paramDialog->add(outputLabel);
+    
+    auto outputEdit = tgui::EditBox::create();
+    outputEdit->setSize("90%", "15%");
+    outputEdit->setPosition("5%", "55%");
+    outputEdit->setText("processed_output.mp4");
+    paramDialog->add(outputEdit);
+    
+    // Process button
+    auto processBtn = tgui::Button::create("Process");
+    processBtn->setSize("40%", "15%");
+    processBtn->setPosition("5%", "80%");
+    processBtn->onPress([this, paramDialog, durationEdit, outputEdit]() {
+        try {
+            std::string durationStr = durationEdit->getText().toStdString();
+            std::string outputPath = outputEdit->getText().toStdString();
+            
+            if (durationStr.empty()) durationStr = "10.0";
+            if (outputPath.empty()) outputPath = "processed_output.mp4";
+            
+            float duration = std::stof(durationStr);
+            
+            gui.remove(paramDialog);
+            
+            statusLabel->setText("Processing video...");
+            
+            if (videoProcessor.saveProcessedVideo(outputPath, effectChain, duration)) {
+                statusLabel->setText("Video saved: " + outputPath.substr(outputPath.find_last_of("/\\") + 1));
+            } else {
+                statusLabel->setText("Failed to save video");
+            }
+        } catch (const std::exception& e) {
+            statusLabel->setText("Error: Invalid input values");
+            gui.remove(paramDialog);
         }
     });
-    fileDialog->add(saveBtn);
+    paramDialog->add(processBtn);
     
     auto cancelBtn = tgui::Button::create("Cancel");
-    cancelBtn->setSize("40%", "20%");
-    cancelBtn->setPosition("55%", "70%");
-    cancelBtn->onPress([this, fileDialog]() {
-        gui.remove(fileDialog);
+    cancelBtn->setSize("40%", "15%");
+    cancelBtn->setPosition("55%", "80%");
+    cancelBtn->onPress([this, paramDialog]() {
+        gui.remove(paramDialog);
     });
-    fileDialog->add(cancelBtn);
+    paramDialog->add(cancelBtn);
     
-    gui.add(fileDialog);
+    gui.add(paramDialog);
 }
 
 void GUI::updatePreview(const cv::Mat& frame) {

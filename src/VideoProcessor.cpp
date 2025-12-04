@@ -18,25 +18,13 @@ bool VideoProcessor::loadVideo(const std::string& videoFile) {
     width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
     height = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
     totalFrames = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
-    
-    std::cout << "Loading video: " << videoFile << std::endl;
-    std::cout << "FPS: " << fps << ", Size: " << width << "x" << height << ", Frames: " << totalFrames << std::endl;
-    
-    // Load all frames into memory
-    std::vector<cv::Mat> frames;
-    frames.reserve(totalFrames);
-    
-    cv::Mat frame;
-    while (cap.read(frame)) {
-        frames.push_back(frame.clone());
-    }
+    currentFrame = 0;
     
     cap.release();
     
-    videoBuffer = std::make_unique<VideoBuffer>(frames);
-    currentFrame = 0;
+    std::cout << "Video metadata loaded: " << videoFile << std::endl;
+    std::cout << "FPS: " << fps << ", Size: " << width << "x" << height << ", Frames: " << totalFrames << std::endl;
     
-    std::cout << "Video loaded successfully!" << std::endl;
     return true;
 }
 
@@ -82,31 +70,87 @@ bool VideoProcessor::loadAudio(const std::string& audioFile) {
 }
 
 cv::Mat VideoProcessor::getNextFrame() {
-    if (!videoBuffer) {
+    if (videoPath.empty()) {
+        return cv::Mat();
+    }
+    
+    cv::VideoCapture cap(videoPath);
+    if (!cap.isOpened()) {
+        return cv::Mat();
+    }
+    
+    // Seek to current frame
+    cap.set(cv::CAP_PROP_POS_FRAMES, currentFrame);
+    
+    cv::Mat frame;
+    if (!cap.read(frame)) {
         return cv::Mat();
     }
     
     currentFrame++;
-    return videoBuffer->getFrame();
+    cap.release();
+    
+    return frame;
+}
+
+cv::Mat VideoProcessor::getFrameAt(int frameIndex) {
+    if (videoPath.empty()) {
+        return cv::Mat();
+    }
+    
+    cv::VideoCapture cap(videoPath);
+    if (!cap.isOpened()) {
+        return cv::Mat();
+    }
+    
+    // Seek to specific frame
+    cap.set(cv::CAP_PROP_POS_FRAMES, frameIndex);
+    
+    cv::Mat frame;
+    if (!cap.read(frame)) {
+        return cv::Mat();
+    }
+    
+    cap.release();
+    return frame;
 }
 
 void VideoProcessor::reset() {
     currentFrame = 0;
-    if (videoBuffer) {
-        videoBuffer->setIndex(0);
-    }
     if (audioBuffer) {
         audioBuffer->setIndex(0);
     }
 }
 
-bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectChain& effectChain) {
-    if (!videoBuffer) {
+bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectChain& effectChain, float durationSeconds) {
+    if (videoPath.empty()) {
         std::cerr << "Error: No video loaded!" << std::endl;
         return false;
     }
     
-    reset();
+    // Open video file for reading
+    cv::VideoCapture cap(videoPath);
+    if (!cap.isOpened()) {
+        std::cerr << "Error: Could not open video file: " << videoPath << std::endl;
+        return false;
+    }
+    
+    // Calculate target frame count based on duration parameter or audio length
+    int targetFrames = totalFrames;
+    
+    if (durationSeconds > 0) {
+        // Use specified duration
+        targetFrames = static_cast<int>(durationSeconds * fps);
+        std::cout << "Using specified duration: " << durationSeconds << "s, Target frames: " << targetFrames << std::endl;
+    } else if (audioBuffer) {
+        // Use audio duration as default
+        float audioDuration = static_cast<float>(audioBuffer->size()) / audioBuffer->getSampleRate();
+        targetFrames = static_cast<int>(audioDuration * fps);
+        std::cout << "Using audio duration: " << audioDuration << "s, Target frames: " << targetFrames << std::endl;
+    } else {
+        // Use original video length
+        std::cout << "No duration specified, using video length: " << targetFrames << " frames" << std::endl;
+    }
     
     // Create video writer
     int fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v');
@@ -114,21 +158,46 @@ bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectCha
     
     if (!writer.isOpened()) {
         std::cerr << "Error: Could not open video writer for: " << outputPath << std::endl;
+        cap.release();
         return false;
     }
     
-    std::cout << "Processing video..." << std::endl;
+    std::cout << "Processing video (target: " << targetFrames << " frames)..." << std::endl;
     
-    for (int i = 0; i < totalFrames; ++i) {
-        cv::Mat frame = getNextFrame();
+    // Reset audio buffer
+    if (audioBuffer) {
+        audioBuffer->setIndex(0);
+    }
+    
+    // Process frames - loop video if shorter than audio, or cut if longer
+    int frameCount = 0;
+    
+    while (frameCount < targetFrames) {
+        cv::Mat frame;
         
-        std::cout << "Processing frame " << (i + 1) << " of " << totalFrames << std::endl;
+        // Try to read next frame
+        if (!cap.read(frame)) {
+            // Video ended but audio continues - loop back to start
+            cap.set(cv::CAP_PROP_POS_FRAMES, 0);
+            if (!cap.read(frame)) {
+                std::cerr << "Error: Could not read frame after seeking to start" << std::endl;
+                break;
+            }
+            std::cout << "Video looped at frame " << frameCount << std::endl;
+        }
+        
+        frameCount++;
+        
+        if (frameCount % 30 == 0) {
+            std::cout << "Processing frame " << frameCount << " of " << targetFrames 
+                      << " (" << (100 * frameCount / targetFrames) << "%)" << std::endl;
+        }
         
         cv::Mat processedFrame = effectChain.applyEffects(frame, audioBuffer.get(), fps);
-        
         writer.write(processedFrame);
     }
     
+    cap.release();
     writer.release();
     
     std::cout << "Video saved to: " << outputPath << std::endl;
@@ -160,8 +229,8 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
     totalFrames = numFrames;
     currentFrame = 0;
     
-    // Clear video buffer to save memory
-    videoBuffer.reset();
+    // Clear video path since we're processing an image
+    videoPath.clear();
     
     // If audio is loaded, synchronize the frame count
     if (audioBuffer) {
