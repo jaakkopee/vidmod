@@ -74,9 +74,10 @@ cv::Mat FFTEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float v
     
     // Add modulation on top of the original image rather than multiplying
     // This way the image stays visible even with low FFT values
-    channels[0] += (bassAvg * fft_b * fftScale);    // Blue channel (OpenCV uses BGR)
+    // Mapping: Bass->Red, Mid->Green, Treble->Blue
+    channels[0] += (trebleAvg * fft_b * fftScale);  // Blue channel (OpenCV uses BGR)
     channels[1] += (midAvg * fft_g * fftScale);     // Green channel
-    channels[2] += (trebleAvg * fft_r * fftScale);  // Red channel
+    channels[2] += (bassAvg * fft_r * fftScale);    // Red channel
     
     std::cout << "Modulation values - B: " << (bassAvg * fft_b * fftScale) 
               << ", G: " << (midAvg * fft_g * fftScale) 
