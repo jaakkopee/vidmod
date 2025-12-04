@@ -49,3 +49,10 @@ FFTVidMod
 # Python cache (from original script)
 __pycache__/
 *.pyc
+
+# images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
