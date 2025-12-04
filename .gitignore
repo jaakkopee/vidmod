@@ -1,0 +1,51 @@
+# Build directories
+build/
+bin/
+lib/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Compiled Object files
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+FFTVidMod
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Video and audio files
+*.mp4
+*.avi
+*.mov
+*.wav
+*.mp3
+*.flac
+*.ogg
+
+# Logs
+*.log
+
+# Python cache (from original script)
+__pycache__/
+*.pyc
