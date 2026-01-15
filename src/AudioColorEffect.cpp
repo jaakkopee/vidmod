@@ -10,16 +10,12 @@ AudioColorEffect::AudioColorEffect() : Effect("AudioColor") {
 cv::Mat AudioColorEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float videoFps) {
     if (!audioBuffer) return frame.clone();
     
-    std::cout << "Applying AudioColor effect..." << std::endl;
-    
     int audioFramesPerVideoFrame = static_cast<int>(audioBuffer->getSampleRate() / videoFps);
     std::vector<float> audioSamples = audioBuffer->getBuffer(audioFramesPerVideoFrame);
     
     float rms = audioBuffer->getRMS(audioSamples);
     float colorCoeff = getParameter("color_coeff", 1.0f);
     int mode = static_cast<int>(getParameter("mode", 0.0f));
-    
-    std::cout << "RMS: " << rms << ", Color coefficient: " << colorCoeff << ", Mode: " << mode << std::endl;
     
     // Get FFT of audio split into 8 bands
     std::vector<std::vector<float>> bands;
@@ -98,10 +94,6 @@ cv::Mat AudioColorEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, 
         float peakEnergy = *std::max_element(bandAvgs.begin(), bandAvgs.end());
         float valueMod = 1.0f + (peakEnergy * colorCoeff * 2.0f);
         
-        std::cout << "Weighted Hue: " << weightedHue 
-                  << ", RMS: " << rms 
-                  << ", Peak: " << peakEnergy << std::endl;
-        
         // Process in-place
         hsvFrame.convertTo(hsvFrame, CV_32FC3);
         std::vector<cv::Mat> hsvChannels;
@@ -132,10 +124,6 @@ cv::Mat AudioColorEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, 
         float redEnergy = (bandAvgs[0] + bandAvgs[1] + bandAvgs[2]) / 3.0f;
         float greenEnergy = (bandAvgs[3] + bandAvgs[4] + bandAvgs[5]) / 3.0f;
         float blueEnergy = (bandAvgs[6] + bandAvgs[7]) / 2.0f;
-        
-        std::cout << "Band energies - R(0-2): " << redEnergy 
-                  << ", G(3-5): " << greenEnergy 
-                  << ", B(6-7): " << blueEnergy << std::endl;
         
         // Apply audio reactive color modulation (BGR order in OpenCV)
         float blueMod = 1.0f + (blueEnergy * colorCoeff);

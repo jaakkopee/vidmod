@@ -15,17 +15,13 @@ FFTEffect::FFTEffect() : Effect("FFT") {
 cv::Mat FFTEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float videoFps) {
     // If no audio buffer, just return the original frame
     if (!audioBuffer) {
-        std::cout << "FFT effect: No audio buffer, returning original frame" << std::endl;
         return frame.clone();
     }
-    
-    std::cout << "Applying FFT effect..." << std::endl;
     
     int audioFramesPerVideoFrame = static_cast<int>(audioBuffer->getSampleRate() / videoFps);
     std::vector<float> audioSamples = audioBuffer->getBuffer(audioFramesPerVideoFrame);
     
     if (audioSamples.empty()) {
-        std::cout << "FFT effect: No audio samples, returning original frame" << std::endl;
         return frame.clone();
     }
     
@@ -54,8 +50,6 @@ cv::Mat FFTEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float v
         trebleAvg /= treble.size();
     }
     
-    std::cout << "FFT averages - Bass: " << bassAvg << ", Mid: " << midAvg << ", Treble: " << trebleAvg << std::endl;
-    
     // Apply FFT modulation to each channel
     float fft_r = getParameter("fft_r_coeff", 1.0f);
     float fft_g = getParameter("fft_g_coeff", 1.0f);
@@ -64,10 +58,6 @@ cv::Mat FFTEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float v
     // Massive scaling factor to make very small FFT values visible
     // FFT values are typically in range 1e-6 to 1e-3, so we need ~1e6 multiplier
     const float fftScale = 1000000.0f;
-    
-    std::cout << "Modulation values - B: " << (bassAvg * fft_b * fftScale) 
-              << ", G: " << (midAvg * fft_g * fftScale) 
-              << ", R: " << (trebleAvg * fft_r * fftScale) << std::endl;
     
     // Convert frame to float and split channels
     cv::Mat frameFloat;

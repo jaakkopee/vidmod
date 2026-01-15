@@ -43,8 +43,6 @@ cv::Mat EffectChain::applyEffects(const cv::Mat& frame, AudioBuffer* audioBuffer
     }
     
     for (auto& effect : effects) {
-        std::cout << "Applying effect: " << effect->getName() << std::endl;
-        
         // Restore audio position for each effect so they all read the same audio data
         if (audioBuffer) {
             audioBuffer->setIndex(savedAudioPosition);

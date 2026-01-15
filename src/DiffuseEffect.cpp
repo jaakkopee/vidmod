@@ -7,8 +7,6 @@ DiffuseEffect::DiffuseEffect() : Effect("Diffuse") {
 }
 
 cv::Mat DiffuseEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float videoFps) {
-    std::cout << "Applying Diffuse effect..." << std::endl;
-    
     float diffuseCoeff = getParameter("diffuse_coeff", 0.1f);
     int iterations = static_cast<int>(getParameter("iterations", 1.0f));
     
@@ -18,7 +16,6 @@ cv::Mat DiffuseEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, flo
         std::vector<float> audioSamples = audioBuffer->getBuffer(audioFramesPerVideoFrame);
         float rms = audioBuffer->getRMS(audioSamples);
         diffuseCoeff *= rms;
-        std::cout << "Audio RMS: " << rms << ", Diffuse coefficient: " << diffuseCoeff << std::endl;
     }
     
     cv::Mat newFrame;
@@ -27,8 +24,6 @@ cv::Mat DiffuseEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, flo
     // Use box filter (moving average) for diffusion - much faster than pixel loops
     // This approximates the diffusion equation efficiently
     for (int iter = 0; iter < iterations; ++iter) {
-        std::cout << "Iteration " << iter << std::endl;
-        
         cv::Mat blurred;
         cv::boxFilter(newFrame, blurred, -1, cv::Size(3, 3), cv::Point(-1, -1), true, cv::BORDER_REPLICATE);
         
