@@ -120,25 +120,38 @@ void GUI::setupUI() {
     middlePanel->add(chainLabel);
     
     chainList = tgui::ListBox::create();
-    chainList->setSize("90%", "70%");
+    chainList->setSize("90%", "60%");
     chainList->setPosition("5%", "7%");
     chainList->onItemSelect([this](int) { updateParameterPanel(); });
     middlePanel->add(chainList);
     
+    // Save/Load chain buttons
+    auto saveChainBtn = tgui::Button::create("Save Chain");
+    saveChainBtn->setSize("44%", "4%");
+    saveChainBtn->setPosition("5%", "69%");
+    saveChainBtn->onPress([this]() { saveEffectChain(); });
+    middlePanel->add(saveChainBtn);
+    
+    auto loadChainBtn = tgui::Button::create("Load Chain");
+    loadChainBtn->setSize("44%", "4%");
+    loadChainBtn->setPosition("51%", "69%");
+    loadChainBtn->onPress([this]() { loadEffectChain(); });
+    middlePanel->add(loadChainBtn);
+    
     // Audio position slider
     auto audioTimeLabel = tgui::Label::create("Audio Time:");
-    audioTimeLabel->setPosition("5%", "79%");
+    audioTimeLabel->setPosition("5%", "75%");
     audioTimeLabel->setTextSize(12);
     middlePanel->add(audioTimeLabel);
     
     audioPositionLabel = tgui::Label::create("0.0s");
-    audioPositionLabel->setPosition("75%", "79%");
+    audioPositionLabel->setPosition("75%", "75%");
     audioPositionLabel->setTextSize(12);
     middlePanel->add(audioPositionLabel);
     
     audioPositionSlider = tgui::Slider::create();
     audioPositionSlider->setSize("90%", "3%");
-    audioPositionSlider->setPosition("5%", "82%");
+    audioPositionSlider->setPosition("5%", "78%");
     audioPositionSlider->setMinimum(0);
     audioPositionSlider->setMaximum(100);
     audioPositionSlider->setValue(0);
@@ -162,7 +175,7 @@ void GUI::setupUI() {
     
     previewButton = tgui::Button::create("Preview Frame");
     previewButton->setSize("90%", "5%");
-    previewButton->setPosition("5%", "86%");
+    previewButton->setPosition("5%", "83%");
     previewButton->onPress([this]() { 
         std::cout << "Preview button clicked!" << std::endl;
         generatePreview(); 
@@ -171,7 +184,7 @@ void GUI::setupUI() {
     
     processButton = tgui::Button::create("Process Video");
     processButton->setSize("90%", "5%");
-    processButton->setPosition("5%", "92%");
+    processButton->setPosition("5%", "89%");
     processButton->onPress([this]() { 
         std::cout << "Process button clicked!" << std::endl;
         processVideo(); 
@@ -554,6 +567,90 @@ void GUI::syncPlaylistToVideoProcessor() {
         std::cout << "Playlist synced: " << audioPlaylist.getTrackCount() << " tracks, "
                   << "total duration: " << audioPlaylist.getTotalDuration() << "s" << std::endl;
     }
+}
+
+void GUI::saveEffectChain() {
+    auto fileDialog = tgui::ChildWindow::create("Save Effect Chain");
+    fileDialog->setSize("400", "150");
+    fileDialog->setPosition("(&.size - size) / 2");
+    
+    auto pathLabel = tgui::Label::create("Save as:");
+    pathLabel->setPosition("5%", "10%");
+    pathLabel->setTextSize(14);
+    fileDialog->add(pathLabel);
+    
+    auto pathEdit = tgui::EditBox::create();
+    pathEdit->setSize("90%", "20%");
+    pathEdit->setPosition("5%", "30%");
+    pathEdit->setText("effect_chain.json");
+    fileDialog->add(pathEdit);
+    
+    auto saveBtn = tgui::Button::create("Save");
+    saveBtn->setSize("40%", "20%");
+    saveBtn->setPosition("5%", "70%");
+    saveBtn->onPress([this, fileDialog, pathEdit]() {
+        std::string path = pathEdit->getText().toStdString();
+        if (effectChain.saveToJson(path)) {
+            statusLabel->setText("Chain saved: " + path);
+        } else {
+            statusLabel->setText("Failed to save chain");
+        }
+        gui.remove(fileDialog);
+    });
+    fileDialog->add(saveBtn);
+    
+    auto cancelBtn = tgui::Button::create("Cancel");
+    cancelBtn->setSize("40%", "20%");
+    cancelBtn->setPosition("55%", "70%");
+    cancelBtn->onPress([this, fileDialog]() {
+        gui.remove(fileDialog);
+    });
+    fileDialog->add(cancelBtn);
+    
+    gui.add(fileDialog);
+}
+
+void GUI::loadEffectChain() {
+    auto fileDialog = tgui::ChildWindow::create("Load Effect Chain");
+    fileDialog->setSize("400", "150");
+    fileDialog->setPosition("(&.size - size) / 2");
+    
+    auto pathLabel = tgui::Label::create("File path:");
+    pathLabel->setPosition("5%", "10%");
+    pathLabel->setTextSize(14);
+    fileDialog->add(pathLabel);
+    
+    auto pathEdit = tgui::EditBox::create();
+    pathEdit->setSize("90%", "20%");
+    pathEdit->setPosition("5%", "30%");
+    pathEdit->setText("effect_chain.json");
+    fileDialog->add(pathEdit);
+    
+    auto loadBtn = tgui::Button::create("Load");
+    loadBtn->setSize("40%", "20%");
+    loadBtn->setPosition("5%", "70%");
+    loadBtn->onPress([this, fileDialog, pathEdit]() {
+        std::string path = pathEdit->getText().toStdString();
+        if (effectChain.loadFromJson(path)) {
+            updateChainList();
+            updateParameterPanel();
+            statusLabel->setText("Chain loaded: " + path);
+        } else {
+            statusLabel->setText("Failed to load chain");
+        }
+        gui.remove(fileDialog);
+    });
+    fileDialog->add(loadBtn);
+    
+    auto cancelBtn = tgui::Button::create("Cancel");
+    cancelBtn->setSize("40%", "20%");
+    cancelBtn->setPosition("55%", "70%");
+    cancelBtn->onPress([this, fileDialog]() {
+        gui.remove(fileDialog);
+    });
+    fileDialog->add(cancelBtn);
+    
+    gui.add(fileDialog);
 }
 
 void GUI::processImageLoop() {

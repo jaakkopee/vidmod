@@ -55,6 +55,8 @@ private:
     void clearPlaylist();
     void updatePlaylistDisplay();
     void syncPlaylistToVideoProcessor();
+    void saveEffectChain();
+    void loadEffectChain();
     void generatePreview();
     void processVideo();
     void processImageLoop();

@@ -10,6 +10,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFTW REQUIRED IMPORTED_TARGET fftw3)
 pkg_check_modules(OPENCV REQUIRED IMPORTED_TARGET opencv4)
 pkg_check_modules(SNDFILE REQUIRED IMPORTED_TARGET sndfile)
+find_package(nlohmann_json 3.2.0 REQUIRED)
 
 # TGUI
 find_package(TGUI 1 REQUIRED)
@@ -50,6 +51,7 @@ target_link_libraries(${PROJECT_NAME}
     PkgConfig::OPENCV
     PkgConfig::SNDFILE
     tgui
+    nlohmann_json::nlohmann_json
 )
 
 # Set output directory

@@ -1,6 +1,15 @@
 #include "EffectChain.h"
+#include "FFTEffect.h"
+#include "ShadowEffect.h"
+#include "LightEffect.h"
+#include "DiffuseEffect.h"
+#include "AudioColorEffect.h"
 #include <iostream>
 #include <algorithm>
+#include <fstream>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 void EffectChain::addEffect(std::shared_ptr<Effect> effect) {
     effects.push_back(effect);
@@ -52,4 +61,140 @@ std::shared_ptr<Effect> EffectChain::getEffect(size_t index) const {
         return effects[index];
     }
     return nullptr;
+}
+
+bool EffectChain::saveToJson(const std::string& filePath) const {
+    try {
+        json j;
+        j["version"] = "1.0";
+        j["effects"] = json::array();
+        
+        for (const auto& effect : effects) {
+            json effectJson;
+            effectJson["name"] = effect->getName();
+            effectJson["parameters"] = json::object();
+            
+            for (const auto& [key, value] : effect->getParameters()) {
+                effectJson["parameters"][key] = value;
+            }
+            
+            j["effects"].push_back(effectJson);
+        }
+        
+        std::ofstream file(filePath);
+        if (!file.is_open()) {
+            std::cerr << "Failed to open file for writing: " << filePath << std::endl;
+            return false;
+        }
+        
+        file << j.dump(2); // Pretty print with 2 spaces
+        file.close();
+        
+        std::cout << "Effect chain saved to: " << filePath << std::endl;
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error saving effect chain: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool EffectChain::loadFromJson(const std::string& filePath) {
+    try {
+        std::ifstream file(filePath);
+        if (!file.is_open()) {
+            std::cerr << "Failed to open file for reading: " << filePath << std::endl;
+            return false;
+        }
+        
+        json j;
+        file >> j;
+        file.close();
+        
+        return fromJsonString(j.dump());
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading effect chain: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+std::string EffectChain::toJsonString() const {
+    try {
+        json j;
+        j["version"] = "1.0";
+        j["effects"] = json::array();
+        
+        for (const auto& effect : effects) {
+            json effectJson;
+            effectJson["name"] = effect->getName();
+            effectJson["parameters"] = json::object();
+            
+            for (const auto& [key, value] : effect->getParameters()) {
+                effectJson["parameters"][key] = value;
+            }
+            
+            j["effects"].push_back(effectJson);
+        }
+        
+        return j.dump(2);
+    } catch (const std::exception& e) {
+        std::cerr << "Error converting to JSON: " << e.what() << std::endl;
+        return "";
+    }
+}
+
+bool EffectChain::fromJsonString(const std::string& jsonStr) {
+    try {
+        json j = json::parse(jsonStr);
+        
+        // Clear existing effects
+        clear();
+        
+        if (!j.contains("effects") || !j["effects"].is_array()) {
+            std::cerr << "Invalid JSON: missing 'effects' array" << std::endl;
+            return false;
+        }
+        
+        for (const auto& effectJson : j["effects"]) {
+            if (!effectJson.contains("name")) {
+                std::cerr << "Effect missing 'name' field" << std::endl;
+                continue;
+            }
+            
+            std::string name = effectJson["name"];
+            std::shared_ptr<Effect> effect;
+            
+            // Create effect based on name
+            if (name == "FFT") {
+                effect = std::make_shared<FFTEffect>();
+            } else if (name == "Shadow") {
+                effect = std::make_shared<ShadowEffect>();
+            } else if (name == "Light") {
+                effect = std::make_shared<LightEffect>();
+            } else if (name == "Diffuse") {
+                effect = std::make_shared<DiffuseEffect>();
+            } else if (name == "AudioColor") {
+                effect = std::make_shared<AudioColorEffect>();
+            } else {
+                std::cerr << "Unknown effect type: " << name << std::endl;
+                continue;
+            }
+            
+            // Set parameters
+            if (effectJson.contains("parameters") && effectJson["parameters"].is_object()) {
+                for (auto& [key, value] : effectJson["parameters"].items()) {
+                    if (value.is_number()) {
+                        effect->setParameter(key, value.get<float>());
+                    }
+                }
+            }
+            
+            addEffect(effect);
+        }
+        
+        std::cout << "Loaded " << effects.size() << " effects from JSON" << std::endl;
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error parsing JSON: " << e.what() << std::endl;
+        return false;
+    }
 }

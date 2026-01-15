@@ -3,6 +3,7 @@
 #include "Effect.h"
 #include <vector>
 #include <memory>
+#include <string>
 
 class EffectChain {
 private:
@@ -19,4 +20,10 @@ public:
     size_t size() const { return effects.size(); }
     std::shared_ptr<Effect> getEffect(size_t index) const;
     const std::vector<std::shared_ptr<Effect>>& getEffects() const { return effects; }
+    
+    // JSON serialization
+    bool saveToJson(const std::string& filePath) const;
+    bool loadFromJson(const std::string& filePath);
+    std::string toJsonString() const;
+    bool fromJsonString(const std::string& jsonStr);
 };
