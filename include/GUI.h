@@ -10,6 +10,7 @@
 #include "LightEffect.h"
 #include "DiffuseEffect.h"
 #include "AudioColorEffect.h"
+#include "AudioPlaylist.h"
 #include <memory>
 
 class GUI {
@@ -19,19 +20,21 @@ private:
     
     VideoProcessor videoProcessor;
     EffectChain effectChain;
+    AudioPlaylist audioPlaylist;
     
     tgui::ListBox::Ptr effectList;
     tgui::ListBox::Ptr chainList;
+    tgui::ListBox::Ptr playlistBox;
     tgui::Panel::Ptr paramPanel;
     tgui::Button::Ptr previewButton;
     tgui::Button::Ptr processButton;
     tgui::Label::Ptr statusLabel;
     tgui::Slider::Ptr audioPositionSlider;
     tgui::Label::Ptr audioPositionLabel;
-    float currentAudioPosition;
     
     sf::Texture previewTexture;
     sf::Sprite previewSprite;
+    float currentAudioPosition;
     bool showingPreview;
     cv::Mat currentPreviewFrame;
     std::string currentImagePath;
@@ -47,6 +50,11 @@ private:
     void loadVideoFile();
     void loadAudioFile();
     void loadImageFile();
+    void addAudioToPlaylist();
+    void removeAudioFromPlaylist();
+    void clearPlaylist();
+    void updatePlaylistDisplay();
+    void syncPlaylistToVideoProcessor();
     void generatePreview();
     void processVideo();
     void processImageLoop();

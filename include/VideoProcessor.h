@@ -36,8 +36,12 @@ public:
     const std::string& getVideoPath() const { return videoPath; }
     
     AudioBuffer* getAudioBuffer() { return audioBuffer.get(); }
+    void setAudioBuffer(AudioBuffer* externalBuffer);
     
     bool saveProcessedVideo(const std::string& outputPath, EffectChain& effectChain, float durationSeconds = -1.0f);
+    bool saveProcessedVideo(const std::string& outputPath, EffectChain& effectChain, AudioBuffer* externalAudio, float durationSeconds = -1.0f);
     bool processImageLoop(const std::string& imagePath, const std::string& outputPath, 
                           EffectChain& effectChain, float durationSeconds, float targetFPS = 30.0f);
+    bool processImageLoop(const std::string& imagePath, const std::string& outputPath, 
+                          EffectChain& effectChain, AudioBuffer* externalAudio, float durationSeconds, float targetFPS = 30.0f);
 };

@@ -122,7 +122,20 @@ void VideoProcessor::reset() {
     }
 }
 
+void VideoProcessor::setAudioBuffer(AudioBuffer* externalBuffer) {
+    // This is a temporary holder - doesn't take ownership
+    // We create a copy to maintain ownership semantics
+    if (externalBuffer) {
+        audioBuffer = std::make_unique<AudioBuffer>(externalBuffer->getData(), externalBuffer->getSampleRate());
+        std::cout << "External audio buffer set (" << externalBuffer->size() << " samples)" << std::endl;
+    }
+}
+
 bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectChain& effectChain, float durationSeconds) {
+    return saveProcessedVideo(outputPath, effectChain, audioBuffer.get(), durationSeconds);
+}
+
+bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectChain& effectChain, AudioBuffer* externalAudio, float durationSeconds) {
     if (videoPath.empty()) {
         std::cerr << "Error: No video loaded!" << std::endl;
         return false;
@@ -142,9 +155,9 @@ bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectCha
         // Use specified duration
         targetFrames = static_cast<int>(durationSeconds * fps);
         std::cout << "Using specified duration: " << durationSeconds << "s, Target frames: " << targetFrames << std::endl;
-    } else if (audioBuffer) {
+    } else if (externalAudio) {
         // Use the longer of video or audio duration to allow looping the shorter one
-        float audioDuration = static_cast<float>(audioBuffer->size()) / audioBuffer->getSampleRate();
+        float audioDuration = static_cast<float>(externalAudio->size()) / externalAudio->getSampleRate();
         int audioFrames = static_cast<int>(audioDuration * fps);
         targetFrames = std::max(totalFrames, audioFrames);
         
@@ -175,8 +188,8 @@ bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectCha
     std::cout << "Processing video (target: " << targetFrames << " frames)..." << std::endl;
     
     // Reset audio buffer
-    if (audioBuffer) {
-        audioBuffer->setIndex(0);
+    if (externalAudio) {
+        externalAudio->setIndex(0);
     }
     
     // Process frames - loop video if shorter than audio, or cut if longer
@@ -203,7 +216,7 @@ bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectCha
                       << " (" << (100 * frameCount / targetFrames) << "%)" << std::endl;
         }
         
-        cv::Mat processedFrame = effectChain.applyEffects(frame, audioBuffer.get(), fps);
+        cv::Mat processedFrame = effectChain.applyEffects(frame, externalAudio, fps);
         writer.write(processedFrame);
     }
     
@@ -276,6 +289,75 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
         // Clone the image for each frame and apply effects
         cv::Mat frame = image.clone();
         cv::Mat processedFrame = effectChain.applyEffects(frame, audioBuffer.get(), fps);
+        
+        writer.write(processedFrame);
+    }
+    
+    writer.release();
+    
+    std::cout << "Image loop video saved to: " << outputPath << std::endl;
+    return true;
+}
+
+bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::string& outputPath, 
+                                       EffectChain& effectChain, AudioBuffer* externalAudio, float durationSeconds, float targetFPS) {
+    // Load the image
+    cv::Mat image = cv::imread(imagePath);
+    if (image.empty()) {
+        std::cerr << "Error: Could not load image: " << imagePath << std::endl;
+        return false;
+    }
+    
+    std::cout << "Loaded image: " << imagePath << std::endl;
+    std::cout << "Image size: " << image.cols << "x" << image.rows << std::endl;
+    
+    // Calculate number of frames needed
+    int numFrames = static_cast<int>(durationSeconds * targetFPS);
+    
+    std::cout << "Creating " << numFrames << " frames at " << targetFPS << " FPS" << std::endl;
+    std::cout << "Duration: " << durationSeconds << " seconds" << std::endl;
+    
+    // Set up video processor state
+    fps = targetFPS;
+    width = image.cols;
+    height = image.rows;
+    totalFrames = numFrames;
+    currentFrame = 0;
+    videoPath.clear();
+    
+    if (externalAudio) {
+        std::cout << "Using external audio for modulation" << std::endl;
+    } else {
+        std::cout << "No audio loaded - effects will use default values" << std::endl;
+    }
+    
+    // Create video writer
+    int fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v');
+    cv::VideoWriter writer(outputPath, fourcc, fps, cv::Size(width, height));
+    
+    if (!writer.isOpened()) {
+        std::cerr << "Error: Could not open video writer for: " << outputPath << std::endl;
+        return false;
+    }
+    
+    std::cout << "Processing image loop..." << std::endl;
+    
+    // Process each frame
+    for (int i = 0; i < totalFrames; ++i) {
+        if (i % 30 == 0) {
+            std::cout << "Processing frame " << (i + 1) << " of " << totalFrames 
+                      << " (" << (100 * i / totalFrames) << "%)" << std::endl;
+        }
+        
+        // Advance audio buffer to the correct position
+        if (externalAudio) {
+            size_t audioPos = static_cast<size_t>((static_cast<double>(i) / totalFrames) * externalAudio->size());
+            externalAudio->setIndex(audioPos);
+        }
+        
+        // Clone the image and apply effects
+        cv::Mat frame = image.clone();
+        cv::Mat processedFrame = effectChain.applyEffects(frame, externalAudio, fps);
         
         writer.write(processedFrame);
     }

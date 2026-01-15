@@ -1,7 +1,7 @@
 #include "GUI.h"
 #include <iostream>
 
-GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), previewSprite(previewTexture), currentAudioPosition(0.0f), showingPreview(false) {
+GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), showingPreview(false) {
     setupUI();
 }
 
@@ -40,7 +40,7 @@ void GUI::setupUI() {
     leftPanel->add(effectLabel);
     
     effectList = tgui::ListBox::create();
-    effectList->setSize("90%", "40%");
+    effectList->setSize("90%", "25%");
     effectList->setPosition("5%", "7%");
     effectList->addItem("FFT");
     effectList->addItem("Shadow");
@@ -50,8 +50,8 @@ void GUI::setupUI() {
     leftPanel->add(effectList);
     
     auto addButton = tgui::Button::create("Add to Chain");
-    addButton->setSize("90%", "6%");
-    addButton->setPosition("5%", "50%");
+    addButton->setSize("90%", "5%");
+    addButton->setPosition("5%", "34%");
     addButton->onPress([this]() { 
         if (effectList->getSelectedItemIndex() >= 0) {
             addEffectToChain(effectList->getSelectedItem().toStdString());
@@ -59,43 +59,53 @@ void GUI::setupUI() {
     });
     leftPanel->add(addButton);
     
+    // Audio Playlist Section
+    auto playlistLabel = tgui::Label::create("Audio Playlist:");
+    playlistLabel->setPosition("5%", "41%");
+    playlistLabel->setTextSize(16);
+    leftPanel->add(playlistLabel);
+    
+    playlistBox = tgui::ListBox::create();
+    playlistBox->setSize("90%", "25%");
+    playlistBox->setPosition("5%", "46%");
+    leftPanel->add(playlistBox);
+    
+    auto addAudioBtn = tgui::Button::create("Add Audio");
+    addAudioBtn->setSize("44%", "5%");
+    addAudioBtn->setPosition("5%", "73%");
+    addAudioBtn->onPress([this]() { addAudioToPlaylist(); });
+    leftPanel->add(addAudioBtn);
+    
+    auto removeAudioBtn = tgui::Button::create("Remove");
+    removeAudioBtn->setSize("44%", "5%");
+    removeAudioBtn->setPosition("51%", "73%");
+    removeAudioBtn->onPress([this]() { removeAudioFromPlaylist(); });
+    leftPanel->add(removeAudioBtn);
+    
+    auto clearPlaylistBtn = tgui::Button::create("Clear Playlist");
+    clearPlaylistBtn->setSize("90%", "5%");
+    clearPlaylistBtn->setPosition("5%", "79%");
+    clearPlaylistBtn->onPress([this]() { clearPlaylist(); });
+    leftPanel->add(clearPlaylistBtn);
+    
     // Chain management buttons
     auto removeButton = tgui::Button::create("Remove");
-    removeButton->setSize("44%", "6%");
-    removeButton->setPosition("5%", "58%");
+    removeButton->setSize("44%", "5%");
+    removeButton->setPosition("5%", "86%");
     removeButton->onPress([this]() { removeSelectedEffect(); });
     leftPanel->add(removeButton);
     
     auto upButton = tgui::Button::create("Move Up");
-    upButton->setSize("44%", "6%");
-    upButton->setPosition("51%", "58%");
+    upButton->setSize("44%", "5%");
+    upButton->setPosition("51%", "86%");
     upButton->onPress([this]() { moveEffectUp(); });
     leftPanel->add(upButton);
     
     auto downButton = tgui::Button::create("Move Down");
-    downButton->setSize("90%", "6%");
-    downButton->setPosition("5%", "66%");
+    downButton->setSize("90%", "5%");
+    downButton->setPosition("5%", "92%");
     downButton->onPress([this]() { moveEffectDown(); });
     leftPanel->add(downButton);
-    
-    // File loading buttons
-    auto loadVideoButton = tgui::Button::create("Load Video");
-    loadVideoButton->setSize("90%", "5%");
-    loadVideoButton->setPosition("5%", "76%");
-    loadVideoButton->onPress([this]() { loadVideoFile(); });
-    leftPanel->add(loadVideoButton);
-    
-    auto loadAudioButton = tgui::Button::create("Load Audio");
-    loadAudioButton->setSize("90%", "5%");
-    loadAudioButton->setPosition("5%", "82%");
-    loadAudioButton->onPress([this]() { loadAudioFile(); });
-    leftPanel->add(loadAudioButton);
-    
-    auto loadImageButton = tgui::Button::create("Load Image Loop");
-    loadImageButton->setSize("90%", "5%");
-    loadImageButton->setPosition("5%", "88%");
-    loadImageButton->onPress([this]() { loadImageFile(); });
-    leftPanel->add(loadImageButton);
     
     // Middle panel for effect chain
     auto middlePanel = tgui::Panel::create();
@@ -177,9 +187,22 @@ void GUI::setupUI() {
     rightPanel->add(paramLabel);
     
     paramPanel = tgui::Panel::create();
-    paramPanel->setSize("90%", "85%");
+    paramPanel->setSize("90%", "70%");
     paramPanel->setPosition("5%", "7%");
     rightPanel->add(paramPanel);
+    
+    // File loading buttons at bottom of right panel
+    auto loadVideoButton = tgui::Button::create("Load Video");
+    loadVideoButton->setSize("90%", "5%");
+    loadVideoButton->setPosition("5%", "80%");
+    loadVideoButton->onPress([this]() { loadVideoFile(); });
+    rightPanel->add(loadVideoButton);
+    
+    auto loadImageButton = tgui::Button::create("Load Image Loop");
+    loadImageButton->setSize("90%", "5%");
+    loadImageButton->setPosition("5%", "87%");
+    loadImageButton->onPress([this]() { loadImageFile(); });
+    rightPanel->add(loadImageButton);
     
     // Status label at bottom of preview area (not covering the buttons!)
     statusLabel = tgui::Label::create("Ready");
@@ -434,6 +457,99 @@ void GUI::loadImageFile() {
     gui.add(fileDialog);
 }
 
+void GUI::addAudioToPlaylist() {
+    // Create a file dialog window
+    auto fileDialog = tgui::ChildWindow::create("Add Audio to Playlist");
+    fileDialog->setSize("400", "150");
+    fileDialog->setPosition("(&.size - size) / 2");
+    
+    auto pathLabel = tgui::Label::create("Audio file path:");
+    pathLabel->setPosition("5%", "10%");
+    pathLabel->setTextSize(14);
+    fileDialog->add(pathLabel);
+    
+    auto pathEdit = tgui::EditBox::create();
+    pathEdit->setSize("90%", "20%");
+    pathEdit->setPosition("5%", "30%");
+    fileDialog->add(pathEdit);
+    
+    auto loadBtn = tgui::Button::create("Add");
+    loadBtn->setSize("40%", "20%");
+    loadBtn->setPosition("5%", "70%");
+    loadBtn->onPress([this, fileDialog, pathEdit]() {
+        std::string path = pathEdit->getText().toStdString();
+        if (audioPlaylist.addTrack(path)) {
+            updatePlaylistDisplay();
+            syncPlaylistToVideoProcessor();
+            statusLabel->setText("Added to playlist: " + path.substr(path.find_last_of("/\\") + 1));
+        } else {
+            statusLabel->setText("Failed to add audio");
+        }
+        gui.remove(fileDialog);
+    });
+    fileDialog->add(loadBtn);
+    
+    auto cancelBtn = tgui::Button::create("Cancel");
+    cancelBtn->setSize("40%", "20%");
+    cancelBtn->setPosition("55%", "70%");
+    cancelBtn->onPress([this, fileDialog]() {
+        gui.remove(fileDialog);
+    });
+    fileDialog->add(cancelBtn);
+    
+    gui.add(fileDialog);
+}
+
+void GUI::removeAudioFromPlaylist() {
+    if (playlistBox->getSelectedItemIndex() >= 0) {
+        size_t index = static_cast<size_t>(playlistBox->getSelectedItemIndex());
+        if (audioPlaylist.removeTrack(index)) {
+            updatePlaylistDisplay();
+            syncPlaylistToVideoProcessor();
+            statusLabel->setText("Track removed from playlist");
+        }
+    } else {
+        statusLabel->setText("Select a track to remove");
+    }
+}
+
+void GUI::clearPlaylist() {
+    audioPlaylist.clear();
+    updatePlaylistDisplay();
+    syncPlaylistToVideoProcessor();
+    statusLabel->setText("Playlist cleared");
+}
+
+void GUI::updatePlaylistDisplay() {
+    playlistBox->removeAllItems();
+    for (size_t i = 0; i < audioPlaylist.getTrackCount(); ++i) {
+        const auto& track = audioPlaylist.getTrack(i);
+        std::string filename = track.filePath.substr(track.filePath.find_last_of("/\\") + 1);
+        float duration = static_cast<float>(track.audioData.size()) / track.sampleRate;
+        playlistBox->addItem(std::to_string(i + 1) + ". " + filename + " (" + 
+                            std::to_string(static_cast<int>(duration)) + "s)");
+    }
+    
+    // Update audio position slider if playlist has audio
+    if (audioPlaylist.getAudioBuffer()) {
+        float totalDuration = audioPlaylist.getTotalDuration();
+        audioPositionLabel->setText("0.0s / " + std::to_string(static_cast<int>(totalDuration)) + "s");
+    }
+}
+
+void GUI::syncPlaylistToVideoProcessor() {
+    // This is a workaround since VideoProcessor stores its own AudioBuffer
+    // For now, we'll need to manually load the combined audio from playlist
+    // In a better design, VideoProcessor could accept an external AudioBuffer
+    
+    if (audioPlaylist.getAudioBuffer()) {
+        // We can't directly assign the playlist's buffer to VideoProcessor
+        // But the playlist's buffer can be accessed when processing
+        std::cout << "Playlist synced: " << audioPlaylist.getTrackCount() << " tracks, "
+                  << "total duration: " << audioPlaylist.getTotalDuration() << "s" << std::endl;
+    }
+}
+
 void GUI::processImageLoop() {
     std::cout << "processImageLoop() called" << std::endl;
     std::cout << "currentImagePath: " << currentImagePath << std::endl;
@@ -459,11 +575,14 @@ void GUI::processImageLoop() {
     durationEdit->setSize("90%", "12%");
     durationEdit->setPosition("5%", "23%");
     
-    // Calculate default duration from audio if available
+    // Calculate default duration from audio if available (prefer playlist)
     std::string defaultDuration = "10.0";
-    if (videoProcessor.getAudioBuffer()) {
-        float audioDuration = static_cast<float>(videoProcessor.getAudioBuffer()->size()) / 
-                             videoProcessor.getAudioBuffer()->getSampleRate();
+    AudioBuffer* audioForDuration = audioPlaylist.getAudioBuffer() ? 
+                                   audioPlaylist.getAudioBuffer() : 
+                                   videoProcessor.getAudioBuffer();
+    if (audioForDuration) {
+        float audioDuration = static_cast<float>(audioForDuration->size()) / 
+                             audioForDuration->getSampleRate();
         defaultDuration = std::to_string(audioDuration);
     }
     durationEdit->setText(defaultDuration);
@@ -514,7 +633,12 @@ void GUI::processImageLoop() {
             
             statusLabel->setText("Processing image loop...");
             
-            if (videoProcessor.processImageLoop(currentImagePath, outputPath, effectChain, duration, fps)) {
+            // Use playlist audio if available, otherwise use VideoProcessor's audio
+            AudioBuffer* audioToUse = audioPlaylist.getAudioBuffer() ? 
+                                     audioPlaylist.getAudioBuffer() : 
+                                     videoProcessor.getAudioBuffer();
+            
+            if (videoProcessor.processImageLoop(currentImagePath, outputPath, effectChain, audioToUse, duration, fps)) {
                 statusLabel->setText("Image loop saved: " + outputPath.substr(outputPath.find_last_of("/\\") + 1));
             } else {
                 statusLabel->setText("Failed to process image loop");
@@ -539,6 +663,11 @@ void GUI::processImageLoop() {
 }
 
 void GUI::generatePreview() {
+    // Determine which audio buffer to use (playlist takes priority)
+    AudioBuffer* activeAudioBuffer = audioPlaylist.getAudioBuffer() ? 
+                                     audioPlaylist.getAudioBuffer() : 
+                                     videoProcessor.getAudioBuffer();
+    
     // Check if we have a loaded image first
     try {
         if (!loadedImage.empty()) {
@@ -546,14 +675,14 @@ void GUI::generatePreview() {
             cv::Mat previewFrame = loadedImage.clone();
             
             // Set audio buffer position based on slider
-            if (videoProcessor.getAudioBuffer()) {
-                size_t audioPos = static_cast<size_t>(currentAudioPosition * videoProcessor.getAudioBuffer()->size());
-                videoProcessor.getAudioBuffer()->setIndex(audioPos);
+            if (activeAudioBuffer) {
+                size_t audioPos = static_cast<size_t>(currentAudioPosition * activeAudioBuffer->size());
+                activeAudioBuffer->setIndex(audioPos);
                 std::cout << "Preview using audio position: " << currentAudioPosition 
                          << " (sample " << audioPos << ")" << std::endl;
             }
             
-            cv::Mat processedFrame = effectChain.applyEffects(previewFrame, videoProcessor.getAudioBuffer(), 30.0f);
+            cv::Mat processedFrame = effectChain.applyEffects(previewFrame, activeAudioBuffer, 30.0f);
             updatePreview(processedFrame);
             statusLabel->setText("Preview generated");
             return;
@@ -565,14 +694,14 @@ void GUI::generatePreview() {
     }
     
     // Otherwise use video processor
-    if (!videoProcessor.getAudioBuffer()) {
+    if (!activeAudioBuffer) {
         statusLabel->setText("No audio loaded");
         return;
     }
     
     // Calculate which video frame to show based on audio position
-    float audioDuration = static_cast<float>(videoProcessor.getAudioBuffer()->size()) / 
-                         videoProcessor.getAudioBuffer()->getSampleRate();
+    float audioDuration = static_cast<float>(activeAudioBuffer->size()) / 
+                         activeAudioBuffer->getSampleRate();
     float targetTime = currentAudioPosition * audioDuration;
     int targetFrame = static_cast<int>(targetTime * videoProcessor.getFPS());
     
@@ -594,10 +723,10 @@ void GUI::generatePreview() {
     statusLabel->setText("Generating preview...");
     
     // Set audio buffer position
-    size_t audioPos = static_cast<size_t>(currentAudioPosition * videoProcessor.getAudioBuffer()->size());
-    videoProcessor.getAudioBuffer()->setIndex(audioPos);
+    size_t audioPos = static_cast<size_t>(currentAudioPosition * activeAudioBuffer->size());
+    activeAudioBuffer->setIndex(audioPos);
     
-    cv::Mat processedFrame = effectChain.applyEffects(frame, videoProcessor.getAudioBuffer(), videoProcessor.getFPS());
+    cv::Mat processedFrame = effectChain.applyEffects(frame, activeAudioBuffer, videoProcessor.getFPS());
     updatePreview(processedFrame);
     
     statusLabel->setText("Preview generated");
@@ -639,11 +768,14 @@ void GUI::processVideo() {
     durationEdit->setSize("90%", "12%");
     durationEdit->setPosition("5%", "23%");
     
-    // Calculate default duration from audio if available
+    // Calculate default duration from audio if available (prefer playlist)
     std::string defaultDuration = "10.0";
-    if (videoProcessor.getAudioBuffer()) {
-        float audioDuration = static_cast<float>(videoProcessor.getAudioBuffer()->size()) / 
-                             videoProcessor.getAudioBuffer()->getSampleRate();
+    AudioBuffer* audioForDuration = audioPlaylist.getAudioBuffer() ? 
+                                   audioPlaylist.getAudioBuffer() : 
+                                   videoProcessor.getAudioBuffer();
+    if (audioForDuration) {
+        float audioDuration = static_cast<float>(audioForDuration->size()) / 
+                             audioForDuration->getSampleRate();
         defaultDuration = std::to_string(audioDuration);
     }
     durationEdit->setText(defaultDuration);
@@ -679,7 +811,12 @@ void GUI::processVideo() {
             
             statusLabel->setText("Processing video...");
             
-            if (videoProcessor.saveProcessedVideo(outputPath, effectChain, duration)) {
+            // Use playlist audio if available, otherwise use VideoProcessor's audio
+            AudioBuffer* audioToUse = audioPlaylist.getAudioBuffer() ? 
+                                     audioPlaylist.getAudioBuffer() : 
+                                     videoProcessor.getAudioBuffer();
+            
+            if (videoProcessor.saveProcessedVideo(outputPath, effectChain, audioToUse, duration)) {
                 statusLabel->setText("Video saved: " + outputPath.substr(outputPath.find_last_of("/\\") + 1));
             } else {
                 statusLabel->setText("Failed to save video");
