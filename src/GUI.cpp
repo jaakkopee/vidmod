@@ -144,9 +144,15 @@ void GUI::setupUI() {
     audioPositionSlider->setValue(0);
     audioPositionSlider->onValueChange([this](float value) {
         currentAudioPosition = value / 100.0f; // 0.0 to 1.0
-        if (videoProcessor.getAudioBuffer()) {
-            float audioDuration = static_cast<float>(videoProcessor.getAudioBuffer()->size()) / 
-                                 videoProcessor.getAudioBuffer()->getSampleRate();
+        
+        // Use playlist audio if available, otherwise use VideoProcessor's audio
+        AudioBuffer* activeAudioBuffer = audioPlaylist.getAudioBuffer() ? 
+                                         audioPlaylist.getAudioBuffer() : 
+                                         videoProcessor.getAudioBuffer();
+        
+        if (activeAudioBuffer) {
+            float audioDuration = static_cast<float>(activeAudioBuffer->size()) / 
+                                 activeAudioBuffer->getSampleRate();
             float timeSeconds = currentAudioPosition * audioDuration;
             audioPositionLabel->setText(std::to_string(static_cast<int>(timeSeconds)) + "." + 
                                        std::to_string(static_cast<int>(timeSeconds * 10) % 10) + "s");
