@@ -24,6 +24,7 @@ set(SOURCES
     src/main.cpp
     src/CircularBuffer.cpp
     src/AudioBuffer.cpp
+    src/AudioPlaylist.cpp
     src/VideoBuffer.cpp
     src/Effect.cpp
     src/FFTEffect.cpp
