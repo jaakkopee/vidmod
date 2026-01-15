@@ -7,13 +7,12 @@
 
 struct AudioTrack {
     std::string filePath;
-    std::vector<float> audioData;  // Mono audio data
     int sampleRate;
     size_t startIndex;  // Start index in the combined buffer
     size_t endIndex;    // End index in the combined buffer
     
-    AudioTrack(const std::string& path, const std::vector<float>& data, int sr, size_t start)
-        : filePath(path), audioData(data), sampleRate(sr), startIndex(start), endIndex(start + data.size()) {}
+    AudioTrack(const std::string& path, int sr, size_t start, size_t end)
+        : filePath(path), sampleRate(sr), startIndex(start), endIndex(end) {}
 };
 
 class AudioPlaylist {

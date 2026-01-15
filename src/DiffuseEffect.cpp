@@ -24,43 +24,16 @@ cv::Mat DiffuseEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, flo
     cv::Mat newFrame;
     frame.convertTo(newFrame, CV_32FC3);
     
-    // Pre-compute neighbor offsets
-    std::vector<std::pair<int, int>> offsets;
-    for (int j = -1; j <= 1; ++j) {
-        for (int i = -1; i <= 1; ++i) {
-            if (i != 0 || j != 0) {
-                offsets.push_back({i, j});
-            }
-        }
-    }
-    
+    // Use box filter (moving average) for diffusion - much faster than pixel loops
+    // This approximates the diffusion equation efficiently
     for (int iter = 0; iter < iterations; ++iter) {
         std::cout << "Iteration " << iter << std::endl;
-        cv::Mat tempFrame = newFrame.clone();
         
-        for (int y = 0; y < frame.rows; ++y) {
-            for (int x = 0; x < frame.cols; ++x) {
-                cv::Vec3f diff(0.0f, 0.0f, 0.0f);
-                cv::Vec3f current = tempFrame.at<cv::Vec3f>(y, x);
-                
-                for (const auto& offset : offsets) {
-                    int nx = x + offset.first;
-                    int ny = y + offset.second;
-                    
-                    if (nx >= 0 && nx < frame.cols && ny >= 0 && ny < frame.rows) {
-                        cv::Vec3f neighbor = tempFrame.at<cv::Vec3f>(ny, nx);
-                        for (int c = 0; c < 3; ++c) {
-                            diff[c] += neighbor[c] - current[c];
-                        }
-                    }
-                }
-                
-                for (int c = 0; c < 3; ++c) {
-                    diff[c] *= diffuseCoeff;
-                    newFrame.at<cv::Vec3f>(y, x)[c] = current[c] + diff[c];
-                }
-            }
-        }
+        cv::Mat blurred;
+        cv::boxFilter(newFrame, blurred, -1, cv::Size(3, 3), cv::Point(-1, -1), true, cv::BORDER_REPLICATE);
+        
+        // Blend current frame with blurred version based on diffuse coefficient
+        cv::addWeighted(newFrame, 1.0f - diffuseCoeff, blurred, diffuseCoeff, 0.0, newFrame);
     }
     
     cv::Mat result;

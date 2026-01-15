@@ -76,31 +76,15 @@ void AudioPlaylist::rebuildBuffer() {
         return;
     }
     
-    // Concatenate all track audio data
-    std::vector<float> combinedAudio;
+    // Calculate total samples needed
     size_t totalSamples = 0;
-    
     for (const auto& track : tracks) {
-        totalSamples += track.audioData.size();
+        totalSamples += (track.endIndex - track.startIndex);
     }
-    
-    combinedAudio.reserve(totalSamples);
-    
-    // Update start/end indices and concatenate
-    size_t currentIndex = 0;
-    for (auto& track : tracks) {
-        track.startIndex = currentIndex;
-        combinedAudio.insert(combinedAudio.end(), track.audioData.begin(), track.audioData.end());
-        currentIndex += track.audioData.size();
-        track.endIndex = currentIndex;
-    }
-    
-    // Create new audio buffer with combined data
-    audioBuffer = std::make_unique<AudioBuffer>(combinedAudio, targetSampleRate);
     
     std::cout << "Playlist rebuilt: " << tracks.size() << " tracks, " 
-              << combinedAudio.size() << " samples, "
-              << (combinedAudio.size() / static_cast<float>(targetSampleRate)) << " seconds" << std::endl;
+              << totalSamples << " samples, "
+              << (totalSamples / static_cast<float>(targetSampleRate)) << " seconds" << std::endl;
 }
 
 bool AudioPlaylist::addTrack(const std::string& audioFile) {
@@ -117,20 +101,34 @@ bool AudioPlaylist::addTrack(const std::string& audioFile) {
         monoAudio = resampleAudio(monoAudio, sampleRate, targetSampleRate);
     }
     
-    // Calculate start index (end of current buffer)
-    size_t startIndex = 0;
-    if (!tracks.empty()) {
-        startIndex = tracks.back().endIndex;
+    // Calculate start and end indices
+    size_t startIndex = audioBuffer ? audioBuffer->size() : 0;
+    size_t endIndex = startIndex + monoAudio.size();
+    
+    // Create combined audio data
+    std::vector<float> combinedAudio;
+    if (audioBuffer) {
+        combinedAudio = audioBuffer->getData();
+        combinedAudio.reserve(combinedAudio.size() + monoAudio.size());
+    } else {
+        combinedAudio.reserve(monoAudio.size());
     }
     
-    // Add track
-    tracks.emplace_back(audioFile, monoAudio, targetSampleRate, startIndex);
+    // Append new audio
+    combinedAudio.insert(combinedAudio.end(), monoAudio.begin(), monoAudio.end());
     
-    // Rebuild buffer
-    rebuildBuffer();
+    // Free monoAudio memory immediately
+    monoAudio.clear();
+    monoAudio.shrink_to_fit();
     
-    std::cout << "Track added: " << audioFile << " (duration: " 
-              << (monoAudio.size() / static_cast<float>(targetSampleRate)) << "s)" << std::endl;
+    // Create new audio buffer
+    audioBuffer = std::make_unique<AudioBuffer>(combinedAudio, targetSampleRate);
+    
+    // Add track metadata (without storing the audio data)
+    tracks.emplace_back(audioFile, targetSampleRate, startIndex, endIndex);
+    
+    float duration = (endIndex - startIndex) / static_cast<float>(targetSampleRate);
+    std::cout << "Track added: " << audioFile << " (duration: " << duration << "s)" << std::endl;
     
     return true;
 }
@@ -144,8 +142,26 @@ bool AudioPlaylist::removeTrack(size_t index) {
     std::string removedFile = tracks[index].filePath;
     tracks.erase(tracks.begin() + index);
     
-    // Rebuild buffer with remaining tracks
-    rebuildBuffer();
+    // Rebuild the entire buffer without the removed track
+    if (tracks.empty()) {
+        audioBuffer.reset();
+    } else {
+        // Need to reload all tracks - this is expensive but necessary
+        // Store track info temporarily
+        std::vector<std::string> trackPaths;
+        for (const auto& track : tracks) {
+            trackPaths.push_back(track.filePath);
+        }
+        
+        // Clear and rebuild
+        tracks.clear();
+        audioBuffer.reset();
+        
+        // Reload all tracks
+        for (const auto& path : trackPaths) {
+            addTrack(path);
+        }
+    }
     
     std::cout << "Track removed: " << removedFile << std::endl;
     

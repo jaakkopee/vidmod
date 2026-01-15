@@ -56,13 +56,6 @@ cv::Mat FFTEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float v
     
     std::cout << "FFT averages - Bass: " << bassAvg << ", Mid: " << midAvg << ", Treble: " << trebleAvg << std::endl;
     
-    // Convert frame to float and split channels
-    cv::Mat frameFloat;
-    frame.convertTo(frameFloat, CV_32FC3);
-    
-    std::vector<cv::Mat> channels;
-    cv::split(frameFloat, channels);
-    
     // Apply FFT modulation to each channel
     float fft_r = getParameter("fft_r_coeff", 1.0f);
     float fft_g = getParameter("fft_g_coeff", 1.0f);
@@ -72,6 +65,17 @@ cv::Mat FFTEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float v
     // FFT values are typically in range 1e-6 to 1e-3, so we need ~1e6 multiplier
     const float fftScale = 1000000.0f;
     
+    std::cout << "Modulation values - B: " << (bassAvg * fft_b * fftScale) 
+              << ", G: " << (midAvg * fft_g * fftScale) 
+              << ", R: " << (trebleAvg * fft_r * fftScale) << std::endl;
+    
+    // Convert frame to float and split channels
+    cv::Mat frameFloat;
+    frame.convertTo(frameFloat, CV_32FC3);
+    
+    std::vector<cv::Mat> channels;
+    cv::split(frameFloat, channels);
+    
     // Add modulation on top of the original image rather than multiplying
     // This way the image stays visible even with low FFT values
     // Mapping: Bass->Red, Mid->Green, Treble->Blue
@@ -79,17 +83,12 @@ cv::Mat FFTEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float v
     channels[1] += (midAvg * fft_g * fftScale);     // Green channel
     channels[2] += (bassAvg * fft_r * fftScale);    // Red channel
     
-    std::cout << "Modulation values - B: " << (bassAvg * fft_b * fftScale) 
-              << ", G: " << (midAvg * fft_g * fftScale) 
-              << ", R: " << (trebleAvg * fft_r * fftScale) << std::endl;
-    
-    // Merge channels
-    cv::Mat result;
-    cv::merge(channels, result);
+    // Merge channels back into frameFloat (reuse allocation)
+    cv::merge(channels, frameFloat);
     
     // Clip values to 0-255 range and convert back to uint8
     cv::Mat output;
-    result.convertTo(output, CV_8UC3);
+    frameFloat.convertTo(output, CV_8UC3);
     
     return output;
 }

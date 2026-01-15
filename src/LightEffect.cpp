@@ -6,26 +6,8 @@ LightEffect::LightEffect() : Effect("Light") {
 }
 
 cv::Mat LightEffect::findLocalMaxima(const cv::Mat& frame, int x, int y) {
+    // Kept for compatibility but not used in optimized version
     cv::Vec3b maxima = frame.at<cv::Vec3b>(y, x);
-    
-    for (int j = -1; j <= 1; ++j) {
-        for (int i = -1; i <= 1; ++i) {
-            if (i == 0 && j == 0) continue;
-            
-            int nx = x + i;
-            int ny = y + j;
-            
-            if (nx >= 0 && nx < frame.cols && ny >= 0 && ny < frame.rows) {
-                cv::Vec3b pixel = frame.at<cv::Vec3b>(ny, nx);
-                for (int c = 0; c < 3; ++c) {
-                    if (pixel[c] > maxima[c]) {
-                        maxima[c] = pixel[c];
-                    }
-                }
-            }
-        }
-    }
-    
     cv::Mat result(1, 1, CV_8UC3);
     result.at<cv::Vec3b>(0, 0) = maxima;
     return result;
@@ -45,27 +27,23 @@ cv::Mat LightEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float
         std::cout << "Audio RMS: " << rms << ", Light coefficient: " << lightCoeff << std::endl;
     }
     
-    cv::Mat light = cv::Mat::zeros(frame.size(), CV_32FC3);
-    cv::Mat frameFloat;
+    // Use morphological dilation to find local maxima (much faster than pixel loops)
+    cv::Mat maxima;
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+    cv::dilate(frame, maxima, kernel);
+    
+    // Convert to float for blending
+    cv::Mat frameFloat, maximaFloat;
     frame.convertTo(frameFloat, CV_32FC3);
+    maxima.convertTo(maximaFloat, CV_32FC3);
     
-    for (int y = 0; y < frame.rows; ++y) {
-        for (int x = 0; x < frame.cols; ++x) {
-            cv::Mat maxima = findLocalMaxima(frame, x, y);
-            cv::Vec3b maximaVec = maxima.at<cv::Vec3b>(0, 0);
-            cv::Vec3f maximaFloat(maximaVec[0], maximaVec[1], maximaVec[2]);
-            cv::Vec3f lightVal = light.at<cv::Vec3f>(y, x);
-            
-            for (int c = 0; c < 3; ++c) {
-                lightVal[c] = lightVal[c] + (maximaFloat[c] - lightVal[c]) * lightCoeff;
-            }
-            
-            light.at<cv::Vec3f>(y, x) = lightVal;
-        }
-    }
-    
+    // Blend using addWeighted (optimized operation)
     cv::Mat result;
-    light.convertTo(result, CV_8UC3);
+    cv::addWeighted(frameFloat, 1.0f - lightCoeff, maximaFloat, lightCoeff, 0.0, result);
     
-    return result;
+    // Convert back to uint8
+    cv::Mat output;
+    result.convertTo(output, CV_8UC3);
+    
+    return output;
 }

@@ -544,7 +544,7 @@ void GUI::updatePlaylistDisplay() {
     for (size_t i = 0; i < audioPlaylist.getTrackCount(); ++i) {
         const auto& track = audioPlaylist.getTrack(i);
         std::string filename = track.filePath.substr(track.filePath.find_last_of("/\\") + 1);
-        float duration = static_cast<float>(track.audioData.size()) / track.sampleRate;
+        float duration = static_cast<float>(track.endIndex - track.startIndex) / track.sampleRate;
         playlistBox->addItem(std::to_string(i + 1) + ". " + filename + " (" + 
                             std::to_string(static_cast<int>(duration)) + "s)");
     }

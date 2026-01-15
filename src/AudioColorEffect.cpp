@@ -37,10 +37,6 @@ cv::Mat AudioColorEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, 
         // HSV Mode: Map frequency bands to hue spectrum
         cv::Mat hsvFrame;
         cv::cvtColor(frame, hsvFrame, cv::COLOR_BGR2HSV);
-        hsvFrame.convertTo(hsvFrame, CV_32FC3);
-        
-        std::vector<cv::Mat> hsvChannels;
-        cv::split(hsvFrame, hsvChannels);
         
         // Calculate dominant frequency for hue rotation
         float dominantBand = 0.0f;
@@ -54,14 +50,16 @@ cv::Mat AudioColorEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, 
         
         // Map bands to hue (0-180 in OpenCV HSV)
         float hueShift = (dominantBand / 8.0f) * 180.0f * colorCoeff;
-        hsvChannels[0] += hueShift;
-        
-        // Modulate saturation with overall energy
         float saturationMod = 1.0f + (rms * colorCoeff * 2.0f);
-        hsvChannels[1] *= saturationMod;
-        
-        // Modulate value/brightness with RMS
         float valueMod = 1.0f + (rms * colorCoeff);
+        
+        // Process in-place for better cache performance
+        hsvFrame.convertTo(hsvFrame, CV_32FC3);
+        std::vector<cv::Mat> hsvChannels;
+        cv::split(hsvFrame, hsvChannels);
+        
+        hsvChannels[0] += hueShift;
+        hsvChannels[1] *= saturationMod;
         hsvChannels[2] *= valueMod;
         
         // Clamp HSV values
@@ -69,22 +67,17 @@ cv::Mat AudioColorEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, 
         cv::threshold(hsvChannels[1], hsvChannels[1], 255, 255, cv::THRESH_TRUNC);
         cv::threshold(hsvChannels[2], hsvChannels[2], 255, 255, cv::THRESH_TRUNC);
         
-        cv::Mat result;
-        cv::merge(hsvChannels, result);
-        result.convertTo(result, CV_8UC3);
+        cv::merge(hsvChannels, hsvFrame);
+        hsvFrame.convertTo(hsvFrame, CV_8UC3);
         
         cv::Mat output;
-        cv::cvtColor(result, output, cv::COLOR_HSV2BGR);
+        cv::cvtColor(hsvFrame, output, cv::COLOR_HSV2BGR);
         
         return output;
     } else if (mode == 2) {
         // HSV Spectrum Mode: Each band contributes to hue across the spectrum
         cv::Mat hsvFrame;
         cv::cvtColor(frame, hsvFrame, cv::COLOR_BGR2HSV);
-        hsvFrame.convertTo(hsvFrame, CV_32FC3);
-        
-        std::vector<cv::Mat> hsvChannels;
-        cv::split(hsvFrame, hsvChannels);
         
         // Calculate weighted hue based on all 8 bands
         // Each band maps to a portion of the hue spectrum (0-180)
@@ -101,33 +94,33 @@ cv::Mat AudioColorEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, 
             weightedHue /= totalWeight;
         }
         
-        // Apply weighted hue shift
-        hsvChannels[0] += weightedHue * colorCoeff;
-        
-        // Saturation from RMS
         float saturationMod = 1.0f + (rms * colorCoeff * 3.0f);
-        hsvChannels[1] *= saturationMod;
-        
-        // Value from peak energy across all bands
         float peakEnergy = *std::max_element(bandAvgs.begin(), bandAvgs.end());
         float valueMod = 1.0f + (peakEnergy * colorCoeff * 2.0f);
-        hsvChannels[2] *= valueMod;
         
         std::cout << "Weighted Hue: " << weightedHue 
                   << ", RMS: " << rms 
                   << ", Peak: " << peakEnergy << std::endl;
+        
+        // Process in-place
+        hsvFrame.convertTo(hsvFrame, CV_32FC3);
+        std::vector<cv::Mat> hsvChannels;
+        cv::split(hsvFrame, hsvChannels);
+        
+        hsvChannels[0] += weightedHue * colorCoeff;
+        hsvChannels[1] *= saturationMod;
+        hsvChannels[2] *= valueMod;
         
         // Clamp HSV values
         cv::threshold(hsvChannels[0], hsvChannels[0], 180, 180, cv::THRESH_TRUNC);
         cv::threshold(hsvChannels[1], hsvChannels[1], 255, 255, cv::THRESH_TRUNC);
         cv::threshold(hsvChannels[2], hsvChannels[2], 255, 255, cv::THRESH_TRUNC);
         
-        cv::Mat result;
-        cv::merge(hsvChannels, result);
-        result.convertTo(result, CV_8UC3);
+        cv::merge(hsvChannels, hsvFrame);
+        hsvFrame.convertTo(hsvFrame, CV_8UC3);
         
         cv::Mat output;
-        cv::cvtColor(result, output, cv::COLOR_HSV2BGR);
+        cv::cvtColor(hsvFrame, output, cv::COLOR_HSV2BGR);
         
         return output;
     } else {
@@ -144,29 +137,27 @@ cv::Mat AudioColorEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, 
                   << ", G(3-5): " << greenEnergy 
                   << ", B(6-7): " << blueEnergy << std::endl;
         
-        // Convert frame to float
+        // Apply audio reactive color modulation (BGR order in OpenCV)
+        float blueMod = 1.0f + (blueEnergy * colorCoeff);
+        float greenMod = 1.0f + (greenEnergy * colorCoeff);
+        float redMod = 1.0f + (redEnergy * colorCoeff);
+        
+        // Use cv::Scalar multiplication for efficient per-channel scaling
         cv::Mat frameFloat;
         frame.convertTo(frameFloat, CV_32FC3);
         
         std::vector<cv::Mat> channels;
         cv::split(frameFloat, channels);
         
-        // Apply audio reactive color modulation (BGR order in OpenCV)
-        float blueMod = 1.0f + (blueEnergy * colorCoeff);
-        float greenMod = 1.0f + (greenEnergy * colorCoeff);
-        float redMod = 1.0f + (redEnergy * colorCoeff);
-        
         channels[0] *= blueMod;   // Blue (high frequencies)
         channels[1] *= greenMod;  // Green (mid frequencies)
         channels[2] *= redMod;    // Red (low frequencies)
         
-        // Merge channels
-        cv::Mat result;
-        cv::merge(channels, result);
+        cv::merge(channels, frameFloat);
         
         // Clamp and convert back to uint8
         cv::Mat output;
-        result.convertTo(output, CV_8UC3);
+        frameFloat.convertTo(output, CV_8UC3);
         
         return output;
     }
