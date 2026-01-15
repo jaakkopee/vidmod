@@ -10,6 +10,7 @@
 #include "LightEffect.h"
 #include "DiffuseEffect.h"
 #include "AudioColorEffect.h"
+#include "FractalEffect.h"
 #include "AudioPlaylist.h"
 #include <memory>
 

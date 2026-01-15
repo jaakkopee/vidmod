@@ -33,6 +33,7 @@ set(SOURCES
     src/LightEffect.cpp
     src/DiffuseEffect.cpp
     src/AudioColorEffect.cpp
+    src/FractalEffect.cpp
     src/EffectChain.cpp
     src/VideoProcessor.cpp
     src/GUI.cpp

@@ -47,6 +47,7 @@ void GUI::setupUI() {
     effectList->addItem("Light");
     effectList->addItem("Diffuse");
     effectList->addItem("AudioColor");
+    effectList->addItem("Fractal");
     leftPanel->add(effectList);
     
     auto addButton = tgui::Button::create("Add to Chain");
@@ -244,6 +245,8 @@ void GUI::addEffectToChain(const std::string& effectName) {
         effect = std::make_shared<DiffuseEffect>();
     } else if (effectName == "AudioColor") {
         effect = std::make_shared<AudioColorEffect>();
+    } else if (effectName == "Fractal") {
+        effect = std::make_shared<FractalEffect>();
     }
     
     if (effect) {

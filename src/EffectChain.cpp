@@ -4,6 +4,7 @@
 #include "LightEffect.h"
 #include "DiffuseEffect.h"
 #include "AudioColorEffect.h"
+#include "FractalEffect.h"
 #include <iostream>
 #include <algorithm>
 #include <fstream>
@@ -172,6 +173,8 @@ bool EffectChain::fromJsonString(const std::string& jsonStr) {
                 effect = std::make_shared<DiffuseEffect>();
             } else if (name == "AudioColor") {
                 effect = std::make_shared<AudioColorEffect>();
+            } else if (name == "Fractal") {
+                effect = std::make_shared<FractalEffect>();
             } else {
                 std::cerr << "Unknown effect type: " << name << std::endl;
                 continue;
