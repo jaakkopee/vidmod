@@ -211,14 +211,16 @@ bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectCha
         
         frameCount++;
         
-        if (frameCount % 30 == 0) {
-            std::cout << "Processing frame " << frameCount << " of " << targetFrames 
+        if (frameCount % 30 == 0 || frameCount == 1 || frameCount == targetFrames) {
+            std::cout << "Processing frame " << frameCount << " / " << targetFrames 
                       << " (" << (100 * frameCount / targetFrames) << "%)" << std::endl;
         }
         
         cv::Mat processedFrame = effectChain.applyEffects(frame, externalAudio, fps);
         writer.write(processedFrame);
     }
+    
+    std::cout << "Completed processing: " << frameCount << " / " << targetFrames << " frames" << std::endl;
     
     cap.release();
     writer.release();
@@ -275,9 +277,9 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
     
     // Process each frame on-the-fly (without storing all frames in memory)
     for (int i = 0; i < totalFrames; ++i) {
-        if (i % 30 == 0) {  // Progress update every 30 frames
-            std::cout << "Processing frame " << (i + 1) << " of " << totalFrames 
-                      << " (" << (100 * i / totalFrames) << "%)" << std::endl;
+        if (i % 30 == 0 || i == 0 || i == totalFrames - 1) {
+            std::cout << "Processing frame " << (i + 1) << " / " << totalFrames 
+                      << " (" << (100 * (i + 1) / totalFrames) << "%)" << std::endl;
         }
         
         // Advance audio buffer to the correct position for this frame
@@ -292,6 +294,8 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
         
         writer.write(processedFrame);
     }
+    
+    std::cout << "Completed processing: " << totalFrames << " / " << totalFrames << " frames" << std::endl;
     
     writer.release();
     
@@ -344,9 +348,9 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
     
     // Process each frame
     for (int i = 0; i < totalFrames; ++i) {
-        if (i % 30 == 0) {
-            std::cout << "Processing frame " << (i + 1) << " of " << totalFrames 
-                      << " (" << (100 * i / totalFrames) << "%)" << std::endl;
+        if (i % 30 == 0 || i == 0 || i == totalFrames - 1) {
+            std::cout << "Processing frame " << (i + 1) << " / " << totalFrames 
+                      << " (" << (100 * (i + 1) / totalFrames) << "%)" << std::endl;
         }
         
         // Advance audio buffer to the correct position
@@ -361,6 +365,8 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
         
         writer.write(processedFrame);
     }
+    
+    std::cout << "Completed processing: " << totalFrames << " / " << totalFrames << " frames" << std::endl;
     
     writer.release();
     
