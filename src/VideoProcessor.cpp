@@ -135,7 +135,7 @@ bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectCha
         return false;
     }
     
-    // Calculate target frame count based on duration parameter or audio length
+    // Calculate target frame count based on duration parameter or longer of video/audio
     int targetFrames = totalFrames;
     
     if (durationSeconds > 0) {
@@ -143,10 +143,20 @@ bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectCha
         targetFrames = static_cast<int>(durationSeconds * fps);
         std::cout << "Using specified duration: " << durationSeconds << "s, Target frames: " << targetFrames << std::endl;
     } else if (audioBuffer) {
-        // Use audio duration as default
+        // Use the longer of video or audio duration to allow looping the shorter one
         float audioDuration = static_cast<float>(audioBuffer->size()) / audioBuffer->getSampleRate();
-        targetFrames = static_cast<int>(audioDuration * fps);
-        std::cout << "Using audio duration: " << audioDuration << "s, Target frames: " << targetFrames << std::endl;
+        int audioFrames = static_cast<int>(audioDuration * fps);
+        targetFrames = std::max(totalFrames, audioFrames);
+        
+        if (totalFrames > audioFrames) {
+            std::cout << "Video is longer (" << totalFrames << " frames) than audio (" << audioFrames 
+                      << " frames) - audio will loop" << std::endl;
+        } else if (audioFrames > totalFrames) {
+            std::cout << "Audio is longer (" << audioDuration << "s) than video - video will loop" << std::endl;
+        } else {
+            std::cout << "Video and audio have matching duration: " << audioDuration << "s" << std::endl;
+        }
+        std::cout << "Target frames: " << targetFrames << std::endl;
     } else {
         // Use original video length
         std::cout << "No duration specified, using video length: " << targetFrames << " frames" << std::endl;
