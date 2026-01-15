@@ -140,18 +140,18 @@ void GUI::setupUI() {
     
     // Audio position slider
     auto audioTimeLabel = tgui::Label::create("Audio Time:");
-    audioTimeLabel->setPosition("5%", "75%");
+    audioTimeLabel->setPosition("5%", "74%");
     audioTimeLabel->setTextSize(12);
     middlePanel->add(audioTimeLabel);
     
     audioPositionLabel = tgui::Label::create("0.0s");
-    audioPositionLabel->setPosition("75%", "75%");
+    audioPositionLabel->setPosition("75%", "74%");
     audioPositionLabel->setTextSize(12);
     middlePanel->add(audioPositionLabel);
     
     audioPositionSlider = tgui::Slider::create();
-    audioPositionSlider->setSize("90%", "3%");
-    audioPositionSlider->setPosition("5%", "78%");
+    audioPositionSlider->setSize("90%", "4%");
+    audioPositionSlider->setPosition("5%", "77%");
     audioPositionSlider->setMinimum(0);
     audioPositionSlider->setMaximum(100);
     audioPositionSlider->setValue(0);
@@ -175,7 +175,7 @@ void GUI::setupUI() {
     
     previewButton = tgui::Button::create("Preview Frame");
     previewButton->setSize("90%", "5%");
-    previewButton->setPosition("5%", "83%");
+    previewButton->setPosition("5%", "84%");
     previewButton->onPress([this]() { 
         std::cout << "Preview button clicked!" << std::endl;
         generatePreview(); 
@@ -184,7 +184,7 @@ void GUI::setupUI() {
     
     processButton = tgui::Button::create("Process Video");
     processButton->setSize("90%", "5%");
-    processButton->setPosition("5%", "89%");
+    processButton->setPosition("5%", "91%");
     processButton->onPress([this]() { 
         std::cout << "Process button clicked!" << std::endl;
         processVideo(); 
