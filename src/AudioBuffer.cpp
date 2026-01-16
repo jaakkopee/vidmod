@@ -1,7 +1,9 @@
 #include "AudioBuffer.h"
 #include <fftw3.h>
+#include <sndfile.h>
 #include <cmath>
 #include <algorithm>
+#include <iostream>
 
 AudioBuffer::AudioBuffer(const std::vector<float>& audio, int sr) 
     : CircularBuffer<float>(audio), sampleRate(sr) {}
@@ -120,4 +122,27 @@ float AudioBuffer::getRMS(const std::vector<float>& audioBuffer) {
     }
     
     return std::sqrt(sum / audioBuffer.size());
+}
+
+bool AudioBuffer::saveToWAV(const std::string& outputPath) const {
+    SF_INFO sfInfo;
+    sfInfo.samplerate = sampleRate;
+    sfInfo.channels = 1;  // Mono
+    sfInfo.format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;
+    
+    SNDFILE* sndFile = sf_open(outputPath.c_str(), SFM_WRITE, &sfInfo);
+    if (!sndFile) {
+        std::cerr << "Error: Could not open audio file for writing: " << outputPath << std::endl;
+        return false;
+    }
+    
+    sf_count_t written = sf_write_float(sndFile, getData().data(), getData().size());
+    sf_close(sndFile);
+    
+    if (written != static_cast<sf_count_t>(getData().size())) {
+        std::cerr << "Error: Could not write all audio samples" << std::endl;
+        return false;
+    }
+    
+    return true;
 }

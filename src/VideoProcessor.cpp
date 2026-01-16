@@ -226,6 +226,49 @@ bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectCha
     writer.release();
     
     std::cout << "Video saved to: " << outputPath << std::endl;
+    
+    // Mux audio into the video if available
+    if (externalAudio) {
+        std::cout << "Muxing audio into video..." << std::endl;
+        
+        // Save audio to temporary WAV file
+        std::string tempAudioPath = outputPath + ".temp_audio.wav";
+        if (!externalAudio->saveToWAV(tempAudioPath)) {
+            std::cerr << "Warning: Could not save audio to temporary file" << std::endl;
+            return true;  // Video saved successfully, but no audio
+        }
+        
+        // Create output path with audio
+        std::string videoWithAudioPath = outputPath;
+        std::string tempVideoPath = outputPath + ".temp_video.mp4";
+        
+        // Rename the video-only file to temp
+        if (rename(outputPath.c_str(), tempVideoPath.c_str()) != 0) {
+            std::cerr << "Warning: Could not rename temporary video file" << std::endl;
+            remove(tempAudioPath.c_str());
+            return true;
+        }
+        
+        // Build FFmpeg command to mux audio and video
+        std::string ffmpegCmd = "ffmpeg -y -i \"" + tempVideoPath + "\" -i \"" + tempAudioPath + 
+            "\" -c:v copy -c:a aac -shortest \"" + videoWithAudioPath + "\" 2>&1";
+        
+        std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
+        int result = system(ffmpegCmd.c_str());
+        
+        // Clean up temporary files
+        remove(tempVideoPath.c_str());
+        remove(tempAudioPath.c_str());
+        
+        if (result != 0) {
+            std::cerr << "Warning: FFmpeg muxing failed. Video saved without audio." << std::endl;
+            // Restore the video-only file if FFmpeg failed
+            rename(tempVideoPath.c_str(), outputPath.c_str());
+        } else {
+            std::cout << "Audio successfully muxed into video!" << std::endl;
+        }
+    }
+    
     return true;
 }
 
@@ -300,6 +343,49 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
     writer.release();
     
     std::cout << "Image loop video saved to: " << outputPath << std::endl;
+    
+    // Mux audio into the video if available
+    if (audioBuffer) {
+        std::cout << "Muxing audio into video..." << std::endl;
+        
+        // Save audio to temporary WAV file
+        std::string tempAudioPath = outputPath + ".temp_audio.wav";
+        if (!audioBuffer->saveToWAV(tempAudioPath)) {
+            std::cerr << "Warning: Could not save audio to temporary file" << std::endl;
+            return true;  // Video saved successfully, but no audio
+        }
+        
+        // Create output path with audio
+        std::string videoWithAudioPath = outputPath;
+        std::string tempVideoPath = outputPath + ".temp_video.mp4";
+        
+        // Rename the video-only file to temp
+        if (rename(outputPath.c_str(), tempVideoPath.c_str()) != 0) {
+            std::cerr << "Warning: Could not rename temporary video file" << std::endl;
+            remove(tempAudioPath.c_str());
+            return true;
+        }
+        
+        // Build FFmpeg command to mux audio and video
+        std::string ffmpegCmd = "ffmpeg -y -i \"" + tempVideoPath + "\" -i \"" + tempAudioPath + 
+            "\" -c:v copy -c:a aac -shortest \"" + videoWithAudioPath + "\" 2>&1";
+        
+        std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
+        int result = system(ffmpegCmd.c_str());
+        
+        // Clean up temporary files
+        remove(tempVideoPath.c_str());
+        remove(tempAudioPath.c_str());
+        
+        if (result != 0) {
+            std::cerr << "Warning: FFmpeg muxing failed. Video saved without audio." << std::endl;
+            // Restore the video-only file if FFmpeg failed
+            rename(tempVideoPath.c_str(), outputPath.c_str());
+        } else {
+            std::cout << "Audio successfully muxed into video!" << std::endl;
+        }
+    }
+    
     return true;
 }
 
@@ -371,5 +457,48 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
     writer.release();
     
     std::cout << "Image loop video saved to: " << outputPath << std::endl;
+    
+    // Mux audio into the video if available
+    if (externalAudio) {
+        std::cout << "Muxing audio into video..." << std::endl;
+        
+        // Save audio to temporary WAV file
+        std::string tempAudioPath = outputPath + ".temp_audio.wav";
+        if (!externalAudio->saveToWAV(tempAudioPath)) {
+            std::cerr << "Warning: Could not save audio to temporary file" << std::endl;
+            return true;  // Video saved successfully, but no audio
+        }
+        
+        // Create output path with audio
+        std::string videoWithAudioPath = outputPath;
+        std::string tempVideoPath = outputPath + ".temp_video.mp4";
+        
+        // Rename the video-only file to temp
+        if (rename(outputPath.c_str(), tempVideoPath.c_str()) != 0) {
+            std::cerr << "Warning: Could not rename temporary video file" << std::endl;
+            remove(tempAudioPath.c_str());
+            return true;
+        }
+        
+        // Build FFmpeg command to mux audio and video
+        std::string ffmpegCmd = "ffmpeg -y -i \"" + tempVideoPath + "\" -i \"" + tempAudioPath + 
+            "\" -c:v copy -c:a aac -shortest \"" + videoWithAudioPath + "\" 2>&1";
+        
+        std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
+        int result = system(ffmpegCmd.c_str());
+        
+        // Clean up temporary files
+        remove(tempVideoPath.c_str());
+        remove(tempAudioPath.c_str());
+        
+        if (result != 0) {
+            std::cerr << "Warning: FFmpeg muxing failed. Video saved without audio." << std::endl;
+            // Restore the video-only file if FFmpeg failed
+            rename(tempVideoPath.c_str(), outputPath.c_str());
+        } else {
+            std::cout << "Audio successfully muxed into video!" << std::endl;
+        }
+    }
+    
     return true;
 }

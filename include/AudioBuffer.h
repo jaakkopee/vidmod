@@ -3,6 +3,7 @@
 #include "CircularBuffer.h"
 #include <vector>
 #include <complex>
+#include <string>
 
 class AudioBuffer : public CircularBuffer<float> {
 private:
@@ -25,4 +26,7 @@ public:
     
     // Get root mean square of audio buffer
     float getRMS(const std::vector<float>& audioBuffer);
+    
+    // Save audio buffer to WAV file
+    bool saveToWAV(const std::string& outputPath) const;
 };
