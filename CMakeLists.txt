@@ -12,6 +12,21 @@ pkg_check_modules(OPENCV REQUIRED IMPORTED_TARGET opencv4)
 pkg_check_modules(SNDFILE REQUIRED IMPORTED_TARGET sndfile)
 find_package(nlohmann_json 3.2.0 REQUIRED)
 
+# OpenMP for macOS (homebrew libomp)
+if(APPLE)
+    set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp")
+    set(OpenMP_C_LIB_NAMES "omp")
+    set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp")
+    set(OpenMP_CXX_LIB_NAMES "omp")
+    set(OpenMP_omp_LIBRARY "/opt/homebrew/opt/libomp/lib/libomp.dylib")
+    include_directories("/opt/homebrew/opt/libomp/include")
+    link_directories("/opt/homebrew/opt/libomp/lib")
+endif()
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+endif()
+
 # TGUI
 find_package(TGUI 1 REQUIRED)
 
@@ -54,6 +69,10 @@ target_link_libraries(${PROJECT_NAME}
     tgui
     nlohmann_json::nlohmann_json
 )
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(${PROJECT_NAME} OpenMP::OpenMP_CXX)
+endif()
 
 # Set output directory
 set_target_properties(${PROJECT_NAME} PROPERTIES

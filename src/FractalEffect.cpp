@@ -4,8 +4,8 @@
 
 FractalEffect::FractalEffect() : Effect("Fractal") {
     setParameter("zoom", 1.5f);           // Zoom level into fractal space
-    setParameter("max_iter", 50.0f);      // Base maximum iterations
-    setParameter("audio_depth", 50.0f);   // Additional iterations from audio
+    setParameter("max_iter", 30.0f);      // Base maximum iterations (reduced for performance)
+    setParameter("audio_depth", 30.0f);   // Additional iterations from audio
     setParameter("cx", -0.4f);            // Julia set constant real part
     setParameter("cy", 0.6f);             // Julia set constant imaginary part
     setParameter("blend", 0.5f);          // Blend original image with fractal
@@ -80,23 +80,40 @@ cv::Mat FractalEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, flo
     }
     
     // Clamp values
-    maxIter = std::max(1, std::min(maxIter, 500));
+    maxIter = std::max(1, std::min(maxIter, 200));  // Reduced from 500
     blendAmount = std::max(0.0f, std::min(1.0f, blendAmount));
     
     cv::Mat fractalImage(frame.size(), CV_8UC3);
-    cv::Mat frameFloat;
-    frame.convertTo(frameFloat, CV_32FC3);
     
-    // Generate fractal using image data
-    for (int y = 0; y < frame.rows; ++y) {
-        for (int x = 0; x < frame.cols; ++x) {
+    // Precalculate constants outside the loop
+    const int cols = frame.cols;
+    const int rows = frame.rows;
+    const double halfCols = cols / 2.0;
+    const double halfRows = rows / 2.0;
+    const double scaleX = (cols / 4.0) * zoom;
+    const double scaleY = (rows / 4.0) * zoom;
+    const float invMaxIter = 1.0f / maxIter;
+    const int blendAmountInt = static_cast<int>(blendAmount * 256.0f);  // Fixed-point blend
+    const int invBlendAmountInt = 256 - blendAmountInt;
+    
+    // Generate fractal using image data with OpenMP parallelization
+    #pragma omp parallel for schedule(dynamic, 16)
+    for (int y = 0; y < rows; ++y) {
+        // Use row pointers for faster access
+        const uchar* frameRow = frame.ptr<uchar>(y);
+        uchar* fractalRow = fractalImage.ptr<uchar>(y);
+        
+        for (int x = 0; x < cols; ++x) {
             // Map pixel position to complex plane
-            double xPos = (x - frame.cols / 2.0) / (frame.cols / 4.0) / zoom;
-            double yPos = (y - frame.rows / 2.0) / (frame.rows / 4.0) / zoom;
+            double xPos = (x - halfCols) / scaleX;
+            double yPos = (y - halfRows) / scaleY;
             
             // Get original pixel brightness to offset fractal coordinates
-            cv::Vec3b pixel = frame.at<cv::Vec3b>(y, x);
-            double brightness = (pixel[0] + pixel[1] + pixel[2]) / (3.0 * 255.0);
+            const int idx = x * 3;
+            const uchar b = frameRow[idx];
+            const uchar g = frameRow[idx + 1];
+            const uchar r = frameRow[idx + 2];
+            double brightness = (b + g + r) / (3.0 * 255.0);
             
             // Brightness modulates starting position (image influences fractal)
             xPos += (brightness - 0.5) * 0.3;
@@ -108,40 +125,40 @@ cv::Mat FractalEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, flo
             // Map iteration count to color
             if (iter == maxIter) {
                 // Inside the set - use dark version of original color
-                fractalImage.at<cv::Vec3b>(y, x) = cv::Vec3b(
-                    pixel[0] / 4,
-                    pixel[1] / 4,
-                    pixel[2] / 4
-                );
+                fractalRow[idx] = b >> 2;      // Fast divide by 4
+                fractalRow[idx + 1] = g >> 2;
+                fractalRow[idx + 2] = r >> 2;
             } else {
                 // Outside the set - colorize based on escape time
-                float t = static_cast<float>(iter) / maxIter;
+                float t = static_cast<float>(iter) * invMaxIter;
                 
                 // Sample color from original image at a position based on iteration
-                int sampleX = static_cast<int>(t * frame.cols) % frame.cols;
-                int sampleY = static_cast<int>(t * frame.rows) % frame.rows;
-                cv::Vec3b sampleColor = frame.at<cv::Vec3b>(sampleY, sampleX);
+                int sampleX = static_cast<int>(t * cols) % cols;
+                int sampleY = static_cast<int>(t * rows) % rows;
+                const uchar* sampleRow = frame.ptr<uchar>(sampleY);
+                const int sampleIdx = sampleX * 3;
                 
                 // Blend sampled color with iteration-based gradient
                 float gradient = std::sin(t * 3.14159f) * 255.0f;
-                fractalImage.at<cv::Vec3b>(y, x) = cv::Vec3b(
-                    static_cast<uchar>((sampleColor[0] * 0.7f + gradient * 0.3f)),
-                    static_cast<uchar>((sampleColor[1] * 0.7f + gradient * 0.3f)),
-                    static_cast<uchar>((sampleColor[2] * 0.7f + gradient * 0.3f))
-                );
+                fractalRow[idx] = static_cast<uchar>(sampleRow[sampleIdx] * 0.7f + gradient * 0.3f);
+                fractalRow[idx + 1] = static_cast<uchar>(sampleRow[sampleIdx + 1] * 0.7f + gradient * 0.3f);
+                fractalRow[idx + 2] = static_cast<uchar>(sampleRow[sampleIdx + 2] * 0.7f + gradient * 0.3f);
             }
         }
     }
     
-    // Blend fractal with original frame
-    cv::Mat fractalFloat;
-    fractalImage.convertTo(fractalFloat, CV_32FC3);
-    
-    cv::Mat result;
-    cv::addWeighted(frameFloat, 1.0f - blendAmount, fractalFloat, blendAmount, 0.0, result);
-    
-    cv::Mat output;
-    result.convertTo(output, CV_8UC3);
+    // Blend fractal with original frame using fast integer math
+    cv::Mat output(frame.size(), CV_8UC3);
+    #pragma omp parallel for
+    for (int y = 0; y < rows; ++y) {
+        const uchar* frameRow = frame.ptr<uchar>(y);
+        const uchar* fractalRow = fractalImage.ptr<uchar>(y);
+        uchar* outRow = output.ptr<uchar>(y);
+        
+        for (int x = 0; x < cols * 3; ++x) {
+            outRow[x] = (frameRow[x] * invBlendAmountInt + fractalRow[x] * blendAmountInt) >> 8;
+        }
+    }
     
     return output;
 }
