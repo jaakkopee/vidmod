@@ -49,6 +49,7 @@ set(SOURCES
     src/DiffuseEffect.cpp
     src/AudioColorEffect.cpp
     src/FractalEffect.cpp
+    src/NeuralTileEffect.cpp
     src/EffectChain.cpp
     src/VideoProcessor.cpp
     src/GUI.cpp

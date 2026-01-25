@@ -1,5 +1,6 @@
 #include "GUI.h"
 #include "VideoBuffer.h"
+#include "NeuralTileEffect.h"
 #include <iostream>
 #include <cstring>  // for strerror
 #include <cerrno>   // for errno
@@ -51,6 +52,7 @@ void GUI::setupUI() {
     effectList->addItem("Diffuse");
     effectList->addItem("AudioColor");
     effectList->addItem("Fractal");
+    effectList->addItem("NeuralTile");
     leftPanel->add(effectList);
     
     auto addButton = tgui::Button::create("Add to Chain");
@@ -259,6 +261,8 @@ void GUI::addEffectToChain(const std::string& effectName) {
         effect = std::make_shared<AudioColorEffect>();
     } else if (effectName == "Fractal") {
         effect = std::make_shared<FractalEffect>();
+    } else if (effectName == "NeuralTile") {
+        effect = std::make_shared<NeuralTileEffect>();
     }
     
     if (effect) {
@@ -682,7 +686,7 @@ void GUI::syncPlaylistToVideoProcessor() {
 
 void GUI::saveEffectChain() {
     auto fileDialog = tgui::ChildWindow::create("Save Effect Chain");
-    fileDialog->setSize("400", "150");
+    fileDialog->setSize("500", "180");
     fileDialog->setPosition("(&.size - size) / 2");
     
     auto pathLabel = tgui::Label::create("Save as:");
@@ -696,9 +700,33 @@ void GUI::saveEffectChain() {
     pathEdit->setText("effect_chain.json");
     fileDialog->add(pathEdit);
     
+    auto browseBtn = tgui::Button::create("Browse...");
+    browseBtn->setSize("30%", "15%");
+    browseBtn->setPosition("5%", "55%");
+    browseBtn->onPress([pathEdit]() {
+        // Use macOS file picker for save location
+        FILE* pipe = popen("osascript -e 'POSIX path of (choose file name with prompt \"Save Effect Chain\" default name \"effect_chain.json\")' 2>/dev/null", "r");
+        if (pipe) {
+            char buffer[1024];
+            std::string result;
+            while (fgets(buffer, sizeof(buffer), pipe)) {
+                result += buffer;
+            }
+            pclose(pipe);
+            // Remove trailing newline
+            if (!result.empty() && result.back() == '\n') {
+                result.pop_back();
+            }
+            if (!result.empty()) {
+                pathEdit->setText(result);
+            }
+        }
+    });
+    fileDialog->add(browseBtn);
+    
     auto saveBtn = tgui::Button::create("Save");
-    saveBtn->setSize("40%", "20%");
-    saveBtn->setPosition("5%", "70%");
+    saveBtn->setSize("30%", "15%");
+    saveBtn->setPosition("5%", "75%");
     saveBtn->onPress([this, fileDialog, pathEdit]() {
         std::string path = pathEdit->getText().toStdString();
         if (effectChain.saveToJson(path)) {
@@ -711,8 +739,8 @@ void GUI::saveEffectChain() {
     fileDialog->add(saveBtn);
     
     auto cancelBtn = tgui::Button::create("Cancel");
-    cancelBtn->setSize("40%", "20%");
-    cancelBtn->setPosition("55%", "70%");
+    cancelBtn->setSize("30%", "15%");
+    cancelBtn->setPosition("65%", "75%");
     cancelBtn->onPress([this, fileDialog]() {
         gui.remove(fileDialog);
     });
@@ -723,7 +751,7 @@ void GUI::saveEffectChain() {
 
 void GUI::loadEffectChain() {
     auto fileDialog = tgui::ChildWindow::create("Load Effect Chain");
-    fileDialog->setSize("400", "150");
+    fileDialog->setSize("500", "180");
     fileDialog->setPosition("(&.size - size) / 2");
     
     auto pathLabel = tgui::Label::create("File path:");
@@ -737,9 +765,33 @@ void GUI::loadEffectChain() {
     pathEdit->setText("effect_chain.json");
     fileDialog->add(pathEdit);
     
+    auto browseBtn = tgui::Button::create("Browse...");
+    browseBtn->setSize("30%", "15%");
+    browseBtn->setPosition("5%", "55%");
+    browseBtn->onPress([pathEdit]() {
+        // Use macOS file picker
+        FILE* pipe = popen("osascript -e 'POSIX path of (choose file with prompt \"Select Effect Chain File\" of type {\"public.json\"})' 2>/dev/null", "r");
+        if (pipe) {
+            char buffer[1024];
+            std::string result;
+            while (fgets(buffer, sizeof(buffer), pipe)) {
+                result += buffer;
+            }
+            pclose(pipe);
+            // Remove trailing newline
+            if (!result.empty() && result.back() == '\n') {
+                result.pop_back();
+            }
+            if (!result.empty()) {
+                pathEdit->setText(result);
+            }
+        }
+    });
+    fileDialog->add(browseBtn);
+    
     auto loadBtn = tgui::Button::create("Load");
-    loadBtn->setSize("40%", "20%");
-    loadBtn->setPosition("5%", "70%");
+    loadBtn->setSize("30%", "15%");
+    loadBtn->setPosition("5%", "75%");
     loadBtn->onPress([this, fileDialog, pathEdit]() {
         std::string path = pathEdit->getText().toStdString();
         if (effectChain.loadFromJson(path)) {
@@ -754,8 +806,8 @@ void GUI::loadEffectChain() {
     fileDialog->add(loadBtn);
     
     auto cancelBtn = tgui::Button::create("Cancel");
-    cancelBtn->setSize("40%", "20%");
-    cancelBtn->setPosition("55%", "70%");
+    cancelBtn->setSize("30%", "15%");
+    cancelBtn->setPosition("65%", "75%");
     cancelBtn->onPress([this, fileDialog]() {
         gui.remove(fileDialog);
     });
