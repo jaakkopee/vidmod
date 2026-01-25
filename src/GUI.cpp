@@ -1,6 +1,8 @@
 #include "GUI.h"
 #include "VideoBuffer.h"
 #include <iostream>
+#include <cstring>  // for strerror
+#include <cerrno>   // for errno
 
 GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), showingPreview(false), isProcessing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0) {
     setupUI();
@@ -1134,34 +1136,57 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
             
             writer.release();
             
+            std::cout << "Video writer released. Frames written: " << frameCount << std::endl;
+            
             // Mux audio if available
             if (audioToUse && !shouldStopProcessing) {
-                std::cout << "Muxing audio with video..." << std::endl;
+                std::cout << "Starting audio muxing process..." << std::endl;
+                std::cout << "Audio buffer size: " << audioToUse->size() << " samples" << std::endl;
                 std::string tempAudioPath = outputPath + ".temp_audio.wav";
+                std::cout << "Saving audio to: " << tempAudioPath << std::endl;
+                
                 if (audioToUse->saveToWAV(tempAudioPath)) {
-                    std::cout << "Audio saved to: " << tempAudioPath << std::endl;
+                    std::cout << "Audio saved successfully to: " << tempAudioPath << std::endl;
                     std::string tempVideoPath = outputPath + ".temp_video.mp4";
+                    std::cout << "Attempting to rename " << outputPath << " to " << tempVideoPath << std::endl;
+                    
                     if (rename(outputPath.c_str(), tempVideoPath.c_str()) == 0) {
-                        std::cout << "Video renamed to: " << tempVideoPath << std::endl;
+                        std::cout << "Video renamed successfully to: " << tempVideoPath << std::endl;
                         // Use -nostdin to prevent hanging, show warnings/errors but suppress info
+                        // Map streams explicitly and set audio as default
+                        // Removed -shortest to allow video looping when audio is longer
                         std::string ffmpegCmd = "ffmpeg -y -nostdin -loglevel warning -i \"" + tempVideoPath + 
-                            "\" -i \"" + tempAudioPath + "\" -c:v copy -c:a aac -shortest \"" + 
-                            outputPath + "\"";
+                            "\" -i \"" + tempAudioPath + "\" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k " +
+                            "-disposition:a:0 default \"" + outputPath + "\"";
                         std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
                         int result = system(ffmpegCmd.c_str());
+                        std::cout << "FFmpeg returned code: " << result << std::endl;
+                        
                         if (result != 0) {
                             std::cerr << "FFmpeg muxing failed with code: " << result << std::endl;
                         } else {
                             std::cout << "FFmpeg muxing completed successfully" << std::endl;
                         }
+                        std::cout << "Removing temp video: " << tempVideoPath << std::endl;
                         remove(tempVideoPath.c_str());
+                    } else {
+                        std::cerr << "Failed to rename video file. Error: " << strerror(errno) << std::endl;
                     }
+                    std::cout << "Removing temp audio: " << tempAudioPath << std::endl;
                     remove(tempAudioPath.c_str());
                 } else {
                     std::cerr << "Failed to save audio to WAV file" << std::endl;
                 }
+            } else {
+                if (!audioToUse) {
+                    std::cout << "No audio buffer available for muxing" << std::endl;
+                }
+                if (shouldStopProcessing) {
+                    std::cout << "Processing was stopped, skipping muxing" << std::endl;
+                }
             }
             
+            std::cout << "Processing thread finishing..." << std::endl;
             isProcessing = false;
             
         } catch (const std::exception& e) {

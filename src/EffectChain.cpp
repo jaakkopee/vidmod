@@ -52,6 +52,15 @@ cv::Mat EffectChain::applyEffects(const cv::Mat& frame, AudioBuffer* audioBuffer
         result = effect->apply(result, audioBuffer, videoFps);
     }
     
+    // After all effects are applied, advance audio position by the samples used for this frame
+    // This ensures the next frame gets the next chunk of audio
+    if (audioBuffer) {
+        int audioFramesPerVideoFrame = static_cast<int>(audioBuffer->getSampleRate() / videoFps);
+        // The audio position has already advanced during effect processing, no need to advance again
+        // Just ensure we're at the correct position after all effects
+        audioBuffer->setIndex(savedAudioPosition + audioFramesPerVideoFrame);
+    }
+    
     return result;
 }
 
