@@ -8,19 +8,23 @@ VideoProcessor::VideoProcessor()
 bool VideoProcessor::loadVideo(const std::string& videoFile) {
     videoPath = videoFile;
     
-    cv::VideoCapture cap(videoFile);
-    if (!cap.isOpened()) {
+    // Release existing capture if open
+    if (videoCapture.isOpened()) {
+        videoCapture.release();
+    }
+    
+    // Open new video file and keep it open
+    videoCapture.open(videoFile);
+    if (!videoCapture.isOpened()) {
         std::cerr << "Error: Could not open video file: " << videoFile << std::endl;
         return false;
     }
     
-    fps = cap.get(cv::CAP_PROP_FPS);
-    width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
-    height = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
-    totalFrames = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_COUNT));
+    fps = videoCapture.get(cv::CAP_PROP_FPS);
+    width = static_cast<int>(videoCapture.get(cv::CAP_PROP_FRAME_WIDTH));
+    height = static_cast<int>(videoCapture.get(cv::CAP_PROP_FRAME_HEIGHT));
+    totalFrames = static_cast<int>(videoCapture.get(cv::CAP_PROP_FRAME_COUNT));
     currentFrame = 0;
-    
-    cap.release();
     
     std::cout << "Video metadata loaded: " << videoFile << std::endl;
     std::cout << "FPS: " << fps << ", Size: " << width << "x" << height << ", Frames: " << totalFrames << std::endl;
@@ -70,53 +74,42 @@ bool VideoProcessor::loadAudio(const std::string& audioFile) {
 }
 
 cv::Mat VideoProcessor::getNextFrame() {
-    if (videoPath.empty()) {
+    if (!videoCapture.isOpened()) {
         return cv::Mat();
     }
-    
-    cv::VideoCapture cap(videoPath);
-    if (!cap.isOpened()) {
-        return cv::Mat();
-    }
-    
-    // Seek to current frame
-    cap.set(cv::CAP_PROP_POS_FRAMES, currentFrame);
     
     cv::Mat frame;
-    if (!cap.read(frame)) {
+    if (!videoCapture.read(frame)) {
         return cv::Mat();
     }
     
     currentFrame++;
-    cap.release();
     
     return frame;
 }
 
 cv::Mat VideoProcessor::getFrameAt(int frameIndex) {
-    if (videoPath.empty()) {
-        return cv::Mat();
-    }
-    
-    cv::VideoCapture cap(videoPath);
-    if (!cap.isOpened()) {
+    if (!videoCapture.isOpened()) {
         return cv::Mat();
     }
     
     // Seek to specific frame
-    cap.set(cv::CAP_PROP_POS_FRAMES, frameIndex);
+    videoCapture.set(cv::CAP_PROP_POS_FRAMES, frameIndex);
     
     cv::Mat frame;
-    if (!cap.read(frame)) {
+    if (!videoCapture.read(frame)) {
         return cv::Mat();
     }
     
-    cap.release();
+    currentFrame = frameIndex + 1;
     return frame;
 }
 
 void VideoProcessor::reset() {
     currentFrame = 0;
+    if (videoCapture.isOpened()) {
+        videoCapture.set(cv::CAP_PROP_POS_FRAMES, 0);
+    }
     if (audioBuffer) {
         audioBuffer->setIndex(0);
     }

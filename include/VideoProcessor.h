@@ -12,6 +12,7 @@ private:
     std::string videoPath;
     std::string audioPath;
     std::unique_ptr<AudioBuffer> audioBuffer;
+    cv::VideoCapture videoCapture;
     float fps;
     int width;
     int height;
