@@ -13,6 +13,9 @@
 #include "FractalEffect.h"
 #include "AudioPlaylist.h"
 #include <memory>
+#include <thread>
+#include <mutex>
+#include <atomic>
 
 class GUI {
 private:
@@ -41,6 +44,15 @@ private:
     std::string currentImagePath;
     cv::Mat loadedImage;
     
+    // Threading for video processing
+    std::unique_ptr<std::thread> processingThread;
+    std::atomic<bool> isProcessing;
+    std::atomic<bool> shouldStopProcessing;
+    std::atomic<int> currentProcessingFrame;
+    std::atomic<int> totalProcessingFrames;
+    std::mutex previewMutex;
+    cv::Mat latestProcessedFrame;
+    
     void setupUI();
     void addEffectToChain(const std::string& effectName);
     void removeSelectedEffect();
@@ -62,6 +74,9 @@ private:
     void processVideo();
     void processImageLoop();
     void updatePreview(const cv::Mat& frame);
+    void processVideoThreaded(const std::string& outputPath, float duration, AudioBuffer* audioToUse);
+    void stopProcessing();
+    void updateProcessingProgress();
 
 public:
     GUI(sf::RenderWindow& win);

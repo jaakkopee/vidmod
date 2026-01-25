@@ -1,7 +1,8 @@
 #include "GUI.h"
+#include "VideoBuffer.h"
 #include <iostream>
 
-GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), showingPreview(false) {
+GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), showingPreview(false), isProcessing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0) {
     setupUI();
 }
 
@@ -915,18 +916,14 @@ void GUI::processVideo() {
             
             gui.remove(paramDialog);
             
-            statusLabel->setText("Processing video...");
-            
             // Use playlist audio if available, otherwise use VideoProcessor's audio
             AudioBuffer* audioToUse = audioPlaylist.getAudioBuffer() ? 
                                      audioPlaylist.getAudioBuffer() : 
                                      videoProcessor.getAudioBuffer();
             
-            if (videoProcessor.saveProcessedVideo(outputPath, effectChain, audioToUse, duration)) {
-                statusLabel->setText("Video saved: " + outputPath.substr(outputPath.find_last_of("/\\") + 1));
-            } else {
-                statusLabel->setText("Failed to save video");
-            }
+            // Start processing in separate thread
+            processVideoThreaded(outputPath, duration, audioToUse);
+            
         } catch (const std::exception& e) {
             statusLabel->setText("Error: Invalid input values");
             gui.remove(paramDialog);
@@ -1002,11 +999,212 @@ void GUI::handleEvent(const sf::Event& event) {
 }
 
 void GUI::draw() {
+    // Update processing progress if active
+    if (isProcessing) {
+        updateProcessingProgress();
+    }
+    
     gui.draw();
     
     if (showingPreview) {
         // Ensure proper blend mode for drawing the sprite
         sf::RenderStates states = sf::RenderStates::Default;
         window.draw(previewSprite, states);
+    }
+}
+
+void GUI::processVideoThreaded(const std::string& outputPath, float duration, AudioBuffer* audioToUse) {
+    // Stop any existing processing thread
+    if (processingThread && processingThread->joinable()) {
+        shouldStopProcessing = true;
+        processingThread->join();
+    }
+    
+    shouldStopProcessing = false;
+    isProcessing = true;
+    currentProcessingFrame = 0;
+    
+    statusLabel->setText("Starting processing...");
+    
+    // Launch processing in separate thread
+    processingThread = std::make_unique<std::thread>([this, outputPath, duration, audioToUse]() {
+        try {
+            if (videoProcessor.getVideoPath().empty()) {
+                std::lock_guard<std::mutex> lock(previewMutex);
+                isProcessing = false;
+                return;
+            }
+            
+            float fps = videoProcessor.getFPS();
+            int width = videoProcessor.getWidth();
+            int height = videoProcessor.getHeight();
+            int totalFrames = videoProcessor.getTotalFrames();
+            
+            // Load all video frames into VideoBuffer for efficient looping
+            std::cout << "Loading video frames into buffer..." << std::endl;
+            cv::VideoCapture cap(videoProcessor.getVideoPath());
+            if (!cap.isOpened()) {
+                std::lock_guard<std::mutex> lock(previewMutex);
+                isProcessing = false;
+                return;
+            }
+            
+            std::vector<cv::Mat> videoFrames;
+            videoFrames.reserve(totalFrames);
+            cv::Mat frame;
+            int loadedFrames = 0;
+            
+            while (cap.read(frame)) {
+                videoFrames.push_back(frame.clone());
+                loadedFrames++;
+                if (loadedFrames % 30 == 0) {
+                    std::cout << "Loaded " << loadedFrames << " / " << totalFrames << " frames..." << std::endl;
+                }
+            }
+            cap.release();
+            
+            std::cout << "All " << loadedFrames << " frames loaded into buffer" << std::endl;
+            
+            // Create VideoBuffer for automatic looping
+            VideoBuffer videoBuffer(videoFrames);
+            
+            // Calculate target frame count
+            int targetFrames = totalFrames;
+            float videoDuration = totalFrames / fps;
+            float audioDuration = 0.0f;
+            
+            if (duration > 0) {
+                targetFrames = static_cast<int>(duration * fps);
+                std::cout << "Using specified duration: " << duration << "s = " << targetFrames << " frames" << std::endl;
+            } else if (audioToUse) {
+                audioDuration = static_cast<float>(audioToUse->size()) / audioToUse->getSampleRate();
+                int audioFrames = static_cast<int>(audioDuration * fps);
+                targetFrames = std::max(totalFrames, audioFrames);
+                
+                std::cout << "Video duration: " << videoDuration << "s (" << totalFrames << " frames)" << std::endl;
+                std::cout << "Audio duration: " << audioDuration << "s (" << audioFrames << " frames)" << std::endl;
+                
+                if (totalFrames > audioFrames) {
+                    std::cout << "Video is LONGER - audio will loop" << std::endl;
+                } else if (audioFrames > totalFrames) {
+                    std::cout << "Audio is LONGER - video will loop (VideoBuffer)" << std::endl;
+                } else {
+                    std::cout << "Video and audio have EQUAL duration" << std::endl;
+                }
+                std::cout << "Target frames: " << targetFrames << std::endl;
+            }
+            
+            totalProcessingFrames = targetFrames;
+            
+            // Create video writer
+            int fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v');
+            cv::VideoWriter writer(outputPath, fourcc, fps, cv::Size(width, height));
+            
+            if (!writer.isOpened()) {
+                std::lock_guard<std::mutex> lock(previewMutex);
+                isProcessing = false;
+                return;
+            }
+            
+            // Reset audio buffer
+            if (audioToUse) {
+                audioToUse->setIndex(0);
+            }
+            
+            // Process frames using VideoBuffer (automatic looping)
+            int frameCount = 0;
+            
+            while (frameCount < targetFrames && !shouldStopProcessing) {
+                // Get next frame from VideoBuffer (automatically loops)
+                const cv::Mat& currentFrame = videoBuffer.getFrame();
+                
+                frameCount++;
+                currentProcessingFrame = frameCount;
+                
+                // Apply effects
+                cv::Mat processedFrame = effectChain.applyEffects(currentFrame, audioToUse, fps);
+                writer.write(processedFrame);
+                
+                // Update preview every 5 frames to avoid overwhelming the GUI
+                if (frameCount % 5 == 0) {
+                    std::lock_guard<std::mutex> lock(previewMutex);
+                    latestProcessedFrame = processedFrame.clone();
+                }
+            }
+            
+            writer.release();
+            
+            // Mux audio if available
+            if (audioToUse && !shouldStopProcessing) {
+                std::cout << "Muxing audio with video..." << std::endl;
+                std::string tempAudioPath = outputPath + ".temp_audio.wav";
+                if (audioToUse->saveToWAV(tempAudioPath)) {
+                    std::cout << "Audio saved to: " << tempAudioPath << std::endl;
+                    std::string tempVideoPath = outputPath + ".temp_video.mp4";
+                    if (rename(outputPath.c_str(), tempVideoPath.c_str()) == 0) {
+                        std::cout << "Video renamed to: " << tempVideoPath << std::endl;
+                        // Use -nostdin to prevent hanging, show warnings/errors but suppress info
+                        std::string ffmpegCmd = "ffmpeg -y -nostdin -loglevel warning -i \"" + tempVideoPath + 
+                            "\" -i \"" + tempAudioPath + "\" -c:v copy -c:a aac -shortest \"" + 
+                            outputPath + "\"";
+                        std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
+                        int result = system(ffmpegCmd.c_str());
+                        if (result != 0) {
+                            std::cerr << "FFmpeg muxing failed with code: " << result << std::endl;
+                        } else {
+                            std::cout << "FFmpeg muxing completed successfully" << std::endl;
+                        }
+                        remove(tempVideoPath.c_str());
+                    }
+                    remove(tempAudioPath.c_str());
+                } else {
+                    std::cerr << "Failed to save audio to WAV file" << std::endl;
+                }
+            }
+            
+            isProcessing = false;
+            
+        } catch (const std::exception& e) {
+            std::cerr << "Processing error: " << e.what() << std::endl;
+            isProcessing = false;
+        }
+    });
+}
+
+void GUI::updateProcessingProgress() {
+    // Update preview with latest processed frame
+    {
+        std::lock_guard<std::mutex> lock(previewMutex);
+        if (!latestProcessedFrame.empty()) {
+            updatePreview(latestProcessedFrame);
+        }
+    }
+    
+    // Update status label
+    if (isProcessing) {
+        int current = currentProcessingFrame.load();
+        int total = totalProcessingFrames.load();
+        if (total > 0) {
+            int percentage = (100 * current) / total;
+            statusLabel->setText("Processing: " + std::to_string(current) + "/" + 
+                               std::to_string(total) + " (" + std::to_string(percentage) + "%)");
+        }
+    } else if (processingThread && processingThread->joinable()) {
+        // Processing just finished
+        processingThread->join();
+        processingThread.reset();
+        
+        if (shouldStopProcessing) {
+            statusLabel->setText("Processing stopped");
+        } else {
+            statusLabel->setText("Processing complete!");
+        }
+    }
+}
+
+void GUI::stopProcessing() {
+    if (isProcessing) {
+        shouldStopProcessing = true;
+        statusLabel->setText("Stopping...");
     }
 }

@@ -1,0 +1,24 @@
+{
+  "effects": [
+    {
+      "name": "Shadow",
+      "parameters": {
+        "shadow_coeff": 1.0
+      }
+    },
+    {
+      "name": "Light",
+      "parameters": {
+        "light_coeff": 800.0
+      }
+    },
+    {
+      "name": "AudioColor",
+      "parameters": {
+        "color_coeff": 1.0,
+        "mode": 2.0
+      }
+    }
+  ],
+  "version": "1.0"
+}
