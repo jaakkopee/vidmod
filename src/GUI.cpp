@@ -359,7 +359,7 @@ void GUI::updateParameterPanel() {
 void GUI::loadVideoFile() {
     // Create a file dialog window
     auto fileDialog = tgui::ChildWindow::create("Load Video");
-    fileDialog->setSize("400", "150");
+    fileDialog->setSize("500", "180");
     fileDialog->setPosition("(&.size - size) / 2");
     
     auto pathLabel = tgui::Label::create("Video file path:");
@@ -372,9 +372,33 @@ void GUI::loadVideoFile() {
     pathEdit->setPosition("5%", "30%");
     fileDialog->add(pathEdit);
     
+    auto browseBtn = tgui::Button::create("Browse...");
+    browseBtn->setSize("30%", "15%");
+    browseBtn->setPosition("5%", "55%");
+    browseBtn->onPress([this, pathEdit]() {
+        // Use macOS file picker
+        FILE* pipe = popen("osascript -e 'POSIX path of (choose file with prompt \"Select Video File\" of type {\"public.movie\", \"public.mpeg-4\"})' 2>/dev/null", "r");
+        if (pipe) {
+            char buffer[1024];
+            std::string result;
+            while (fgets(buffer, sizeof(buffer), pipe)) {
+                result += buffer;
+            }
+            pclose(pipe);
+            // Remove trailing newline
+            if (!result.empty() && result.back() == '\n') {
+                result.pop_back();
+            }
+            if (!result.empty()) {
+                pathEdit->setText(result);
+            }
+        }
+    });
+    fileDialog->add(browseBtn);
+    
     auto loadBtn = tgui::Button::create("Load");
-    loadBtn->setSize("40%", "20%");
-    loadBtn->setPosition("5%", "70%");
+    loadBtn->setSize("30%", "15%");
+    loadBtn->setPosition("5%", "75%");
     loadBtn->onPress([this, fileDialog, pathEdit]() {
         std::string path = pathEdit->getText().toStdString();
         if (videoProcessor.loadVideo(path)) {
@@ -400,7 +424,7 @@ void GUI::loadVideoFile() {
 void GUI::loadAudioFile() {
     // Create a file dialog window
     auto fileDialog = tgui::ChildWindow::create("Load Audio");
-    fileDialog->setSize("400", "150");
+    fileDialog->setSize("500", "180");
     fileDialog->setPosition("(&.size - size) / 2");
     
     auto pathLabel = tgui::Label::create("Audio file path:");
@@ -413,9 +437,33 @@ void GUI::loadAudioFile() {
     pathEdit->setPosition("5%", "30%");
     fileDialog->add(pathEdit);
     
+    auto browseBtn = tgui::Button::create("Browse...");
+    browseBtn->setSize("30%", "15%");
+    browseBtn->setPosition("5%", "55%");
+    browseBtn->onPress([this, pathEdit]() {
+        // Use macOS file picker
+        FILE* pipe = popen("osascript -e 'POSIX path of (choose file with prompt \"Select Audio File\" of type {\"public.audio\"})' 2>/dev/null", "r");
+        if (pipe) {
+            char buffer[1024];
+            std::string result;
+            while (fgets(buffer, sizeof(buffer), pipe)) {
+                result += buffer;
+            }
+            pclose(pipe);
+            // Remove trailing newline
+            if (!result.empty() && result.back() == '\n') {
+                result.pop_back();
+            }
+            if (!result.empty()) {
+                pathEdit->setText(result);
+            }
+        }
+    });
+    fileDialog->add(browseBtn);
+    
     auto loadBtn = tgui::Button::create("Load");
-    loadBtn->setSize("40%", "20%");
-    loadBtn->setPosition("5%", "70%");
+    loadBtn->setSize("30%", "15%");
+    loadBtn->setPosition("5%", "75%");
     loadBtn->onPress([this, fileDialog, pathEdit]() {
         std::string path = pathEdit->getText().toStdString();
         if (videoProcessor.loadAudio(path)) {
@@ -428,8 +476,8 @@ void GUI::loadAudioFile() {
     fileDialog->add(loadBtn);
     
     auto cancelBtn = tgui::Button::create("Cancel");
-    cancelBtn->setSize("40%", "20%");
-    cancelBtn->setPosition("55%", "70%");
+    cancelBtn->setSize("30%", "15%");
+    cancelBtn->setPosition("65%", "75%");
     cancelBtn->onPress([this, fileDialog]() {
         gui.remove(fileDialog);
     });
@@ -441,7 +489,7 @@ void GUI::loadAudioFile() {
 void GUI::loadImageFile() {
     // Create a file dialog window
     auto fileDialog = tgui::ChildWindow::create("Load Image for Looping");
-    fileDialog->setSize("400", "150");
+    fileDialog->setSize("500", "180");
     fileDialog->setPosition("(&.size - size) / 2");
     
     auto pathLabel = tgui::Label::create("Image file path:");
@@ -454,9 +502,33 @@ void GUI::loadImageFile() {
     pathEdit->setPosition("5%", "30%");
     fileDialog->add(pathEdit);
     
+    auto browseBtn = tgui::Button::create("Browse...");
+    browseBtn->setSize("30%", "15%");
+    browseBtn->setPosition("5%", "55%");
+    browseBtn->onPress([this, pathEdit]() {
+        // Use macOS file picker
+        FILE* pipe = popen("osascript -e 'POSIX path of (choose file with prompt \"Select Image File\" of type {\"public.image\"})' 2>/dev/null", "r");
+        if (pipe) {
+            char buffer[1024];
+            std::string result;
+            while (fgets(buffer, sizeof(buffer), pipe)) {
+                result += buffer;
+            }
+            pclose(pipe);
+            // Remove trailing newline
+            if (!result.empty() && result.back() == '\n') {
+                result.pop_back();
+            }
+            if (!result.empty()) {
+                pathEdit->setText(result);
+            }
+        }
+    });
+    fileDialog->add(browseBtn);
+    
     auto loadBtn = tgui::Button::create("Load");
-    loadBtn->setSize("40%", "20%");
-    loadBtn->setPosition("5%", "70%");
+    loadBtn->setSize("30%", "15%");
+    loadBtn->setPosition("5%", "75%");
     loadBtn->onPress([this, fileDialog, pathEdit]() {
         std::string path = pathEdit->getText().toStdString();
         
@@ -481,8 +553,8 @@ void GUI::loadImageFile() {
     fileDialog->add(loadBtn);
     
     auto cancelBtn = tgui::Button::create("Cancel");
-    cancelBtn->setSize("40%", "20%");
-    cancelBtn->setPosition("55%", "70%");
+    cancelBtn->setSize("30%", "15%");
+    cancelBtn->setPosition("65%", "75%");
     cancelBtn->onPress([this, fileDialog]() {
         gui.remove(fileDialog);
     });
@@ -494,7 +566,7 @@ void GUI::loadImageFile() {
 void GUI::addAudioToPlaylist() {
     // Create a file dialog window
     auto fileDialog = tgui::ChildWindow::create("Add Audio to Playlist");
-    fileDialog->setSize("400", "150");
+    fileDialog->setSize("500", "180");
     fileDialog->setPosition("(&.size - size) / 2");
     
     auto pathLabel = tgui::Label::create("Audio file path:");
@@ -507,9 +579,33 @@ void GUI::addAudioToPlaylist() {
     pathEdit->setPosition("5%", "30%");
     fileDialog->add(pathEdit);
     
+    auto browseBtn = tgui::Button::create("Browse...");
+    browseBtn->setSize("30%", "15%");
+    browseBtn->setPosition("5%", "55%");
+    browseBtn->onPress([this, pathEdit]() {
+        // Use macOS file picker
+        FILE* pipe = popen("osascript -e 'POSIX path of (choose file with prompt \"Select Audio File\" of type {\"public.audio\"})' 2>/dev/null", "r");
+        if (pipe) {
+            char buffer[1024];
+            std::string result;
+            while (fgets(buffer, sizeof(buffer), pipe)) {
+                result += buffer;
+            }
+            pclose(pipe);
+            // Remove trailing newline
+            if (!result.empty() && result.back() == '\n') {
+                result.pop_back();
+            }
+            if (!result.empty()) {
+                pathEdit->setText(result);
+            }
+        }
+    });
+    fileDialog->add(browseBtn);
+    
     auto loadBtn = tgui::Button::create("Add");
-    loadBtn->setSize("40%", "20%");
-    loadBtn->setPosition("5%", "70%");
+    loadBtn->setSize("30%", "15%");
+    loadBtn->setPosition("5%", "75%");
     loadBtn->onPress([this, fileDialog, pathEdit]() {
         std::string path = pathEdit->getText().toStdString();
         if (audioPlaylist.addTrack(path)) {
@@ -524,8 +620,8 @@ void GUI::addAudioToPlaylist() {
     fileDialog->add(loadBtn);
     
     auto cancelBtn = tgui::Button::create("Cancel");
-    cancelBtn->setSize("40%", "20%");
-    cancelBtn->setPosition("55%", "70%");
+    cancelBtn->setSize("30%", "15%");
+    cancelBtn->setPosition("65%", "75%");
     cancelBtn->onPress([this, fileDialog]() {
         gui.remove(fileDialog);
     });
