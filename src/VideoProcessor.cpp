@@ -3,7 +3,7 @@
 #include <iostream>
 
 VideoProcessor::VideoProcessor() 
-    : fps(30.0f), width(0), height(0), totalFrames(0), currentFrame(0) {}
+    : fps(30.0f), width(0), height(0), totalFrames(0), currentFrame(0), verbose(true) {}
 
 bool VideoProcessor::loadVideo(const std::string& videoFile) {
     videoPath = videoFile;
@@ -204,7 +204,7 @@ bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectCha
         
         frameCount++;
         
-        if (frameCount % 30 == 0 || frameCount == 1 || frameCount == targetFrames) {
+        if (verbose && (frameCount % 30 == 0 || frameCount == 1 || frameCount == targetFrames)) {
             std::cout << "Processing frame " << frameCount << " / " << targetFrames 
                       << " (" << (100 * frameCount / targetFrames) << "%)" << std::endl;
         }
@@ -243,8 +243,9 @@ bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectCha
         }
         
         // Build FFmpeg command to mux audio and video
+        // Re-encode video with libx264 to fix metadata issues from OpenCV's mp4v codec
         std::string ffmpegCmd = "ffmpeg -y -i \"" + tempVideoPath + "\" -i \"" + tempAudioPath + 
-            "\" -c:v copy -c:a aac -shortest \"" + videoWithAudioPath + "\" 2>&1";
+            "\" -c:v libx264 -preset fast -crf 18 -c:a aac -shortest \"" + videoWithAudioPath + "\" 2>&1";
         
         std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
         int result = system(ffmpegCmd.c_str());
@@ -313,7 +314,7 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
     
     // Process each frame on-the-fly (without storing all frames in memory)
     for (int i = 0; i < totalFrames; ++i) {
-        if (i % 30 == 0 || i == 0 || i == totalFrames - 1) {
+        if (verbose && (i % 30 == 0 || i == 0 || i == totalFrames - 1)) {
             std::cout << "Processing frame " << (i + 1) << " / " << totalFrames 
                       << " (" << (100 * (i + 1) / totalFrames) << "%)" << std::endl;
         }
@@ -360,8 +361,9 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
         }
         
         // Build FFmpeg command to mux audio and video
+        // Re-encode video with libx264 to fix metadata issues from OpenCV's mp4v codec
         std::string ffmpegCmd = "ffmpeg -y -i \"" + tempVideoPath + "\" -i \"" + tempAudioPath + 
-            "\" -c:v copy -c:a aac -shortest \"" + videoWithAudioPath + "\" 2>&1";
+            "\" -c:v libx264 -preset fast -crf 18 -c:a aac -shortest \"" + videoWithAudioPath + "\" 2>&1";
         
         std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
         int result = system(ffmpegCmd.c_str());
@@ -427,7 +429,7 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
     
     // Process each frame
     for (int i = 0; i < totalFrames; ++i) {
-        if (i % 30 == 0 || i == 0 || i == totalFrames - 1) {
+        if (verbose && (i % 30 == 0 || i == 0 || i == totalFrames - 1)) {
             std::cout << "Processing frame " << (i + 1) << " / " << totalFrames 
                       << " (" << (100 * (i + 1) / totalFrames) << "%)" << std::endl;
         }
@@ -474,8 +476,9 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
         }
         
         // Build FFmpeg command to mux audio and video
+        // Re-encode video with libx264 to fix metadata issues from OpenCV's mp4v codec
         std::string ffmpegCmd = "ffmpeg -y -i \"" + tempVideoPath + "\" -i \"" + tempAudioPath + 
-            "\" -c:v copy -c:a aac -shortest \"" + videoWithAudioPath + "\" 2>&1";
+            "\" -c:v libx264 -preset fast -crf 18 -c:a aac -shortest \"" + videoWithAudioPath + "\" 2>&1";
         
         std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
         int result = system(ffmpegCmd.c_str());

@@ -18,6 +18,7 @@ private:
     int height;
     int totalFrames;
     int currentFrame;
+    bool verbose;
     
 public:
     VideoProcessor();
@@ -38,6 +39,9 @@ public:
     
     AudioBuffer* getAudioBuffer() { return audioBuffer.get(); }
     void setAudioBuffer(AudioBuffer* externalBuffer);
+    
+    void setVerbose(bool v) { verbose = v; }
+    bool isVerbose() const { return verbose; }
     
     bool saveProcessedVideo(const std::string& outputPath, EffectChain& effectChain, float durationSeconds = -1.0f);
     bool saveProcessedVideo(const std::string& outputPath, EffectChain& effectChain, AudioBuffer* externalAudio, float durationSeconds = -1.0f);

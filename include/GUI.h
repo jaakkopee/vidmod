@@ -35,6 +35,7 @@ private:
     tgui::Label::Ptr statusLabel;
     tgui::Slider::Ptr audioPositionSlider;
     tgui::Label::Ptr audioPositionLabel;
+    tgui::CheckBox::Ptr verboseCheckbox;
     
     sf::Texture previewTexture;
     sf::Sprite previewSprite;

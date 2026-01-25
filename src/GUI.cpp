@@ -179,23 +179,32 @@ void GUI::setupUI() {
     
     previewButton = tgui::Button::create("Preview Frame");
     previewButton->setSize("90%", "5%");
-    previewButton->setPosition("5%", "84%");
+    previewButton->setPosition("5%", "83%");
     previewButton->onPress([this]() { 
         std::cout << "Preview button clicked!" << std::endl;
         generatePreview(); 
     });
     middlePanel->add(previewButton);
     
+    verboseCheckbox = tgui::CheckBox::create("Verbose Progress");
+    verboseCheckbox->setSize(15, 15);
+    verboseCheckbox->setPosition("5%", "89.5%");
+    verboseCheckbox->setChecked(true);
+    verboseCheckbox->onChange([this](bool checked) {
+        videoProcessor.setVerbose(checked);
+    });
+    middlePanel->add(verboseCheckbox);
+    
     processButton = tgui::Button::create("Process Video");
     processButton->setSize("90%", "5%");
-    processButton->setPosition("5%", "91%");
+    processButton->setPosition("5%", "94%");
     processButton->onPress([this]() { 
         std::cout << "Process button clicked!" << std::endl;
         processVideo(); 
     });
     middlePanel->add(processButton);
     
-    std::cout << "Process button created at position 92% with size 5%" << std::endl;
+    std::cout << "Process button created at position 94% with size 5%" << std::endl;
     
     // Right panel for parameters
     auto rightPanel = tgui::Panel::create();
