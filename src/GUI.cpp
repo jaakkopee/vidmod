@@ -1067,8 +1067,16 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
             
             std::cout << "All " << loadedFrames << " frames loaded into buffer" << std::endl;
             
+            if (loadedFrames == 0) {
+                std::cerr << "ERROR: No frames loaded from video!" << std::endl;
+                std::lock_guard<std::mutex> lock(previewMutex);
+                isProcessing = false;
+                return;
+            }
+            
             // Create VideoBuffer for automatic looping
             VideoBuffer videoBuffer(videoFrames);
+            std::cout << "VideoBuffer created with " << videoFrames.size() << " frames" << std::endl;
             
             // Calculate target frame count
             int targetFrames = totalFrames;
@@ -1098,15 +1106,21 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
             
             totalProcessingFrames = targetFrames;
             
+            std::cout << "Creating VideoWriter for " << targetFrames << " frames at " << fps << " fps" << std::endl;
+            std::cout << "Output path: " << outputPath << std::endl;
+            
             // Create video writer
             int fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v');
             cv::VideoWriter writer(outputPath, fourcc, fps, cv::Size(width, height));
             
             if (!writer.isOpened()) {
+                std::cerr << "ERROR: Could not open video writer!" << std::endl;
                 std::lock_guard<std::mutex> lock(previewMutex);
                 isProcessing = false;
                 return;
             }
+            
+            std::cout << "VideoWriter opened successfully" << std::endl;
             
             // Reset audio buffer
             if (audioToUse) {
@@ -1116,12 +1130,19 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
             // Process frames using VideoBuffer (automatic looping)
             int frameCount = 0;
             
+            std::cout << "Starting frame processing loop. Target: " << targetFrames << " frames" << std::endl;
+            
             while (frameCount < targetFrames && !shouldStopProcessing) {
                 // Get next frame from VideoBuffer (automatically loops)
                 const cv::Mat& currentFrame = videoBuffer.getFrame();
                 
                 frameCount++;
                 currentProcessingFrame = frameCount;
+                
+                // Log looping events
+                if (frameCount > totalFrames && frameCount % totalFrames == 1) {
+                    std::cout << "Video looping - now at frame " << frameCount << " (loop #" << (frameCount / totalFrames + 1) << ")" << std::endl;
+                }
                 
                 // Apply effects
                 cv::Mat processedFrame = effectChain.applyEffects(currentFrame, audioToUse, fps);
@@ -1133,6 +1154,8 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                     latestProcessedFrame = processedFrame.clone();
                 }
             }
+            
+            std::cout << "Frame processing complete. Total frames written: " << frameCount << std::endl;
             
             writer.release();
             
