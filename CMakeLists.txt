@@ -50,6 +50,7 @@ set(SOURCES
     src/AudioColorEffect.cpp
     src/FractalEffect.cpp
     src/NeuralTileEffect.cpp
+    src/NeuralCircleEffect.cpp
     src/EffectChain.cpp
     src/VideoProcessor.cpp
     src/GUI.cpp

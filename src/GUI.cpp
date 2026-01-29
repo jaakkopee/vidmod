@@ -1,6 +1,7 @@
 #include "GUI.h"
 #include "VideoBuffer.h"
 #include "NeuralTileEffect.h"
+#include "NeuralCircleEffect.h"
 #include <iostream>
 #include <cstring>  // for strerror
 #include <cerrno>   // for errno
@@ -53,6 +54,7 @@ void GUI::setupUI() {
     effectList->addItem("AudioColor");
     effectList->addItem("Fractal");
     effectList->addItem("NeuralTile");
+    effectList->addItem("NeuralCircle");
     leftPanel->add(effectList);
     
     auto addButton = tgui::Button::create("Add to Chain");
@@ -263,6 +265,8 @@ void GUI::addEffectToChain(const std::string& effectName) {
         effect = std::make_shared<FractalEffect>();
     } else if (effectName == "NeuralTile") {
         effect = std::make_shared<NeuralTileEffect>();
+    } else if (effectName == "NeuralCircle") {
+        effect = std::make_shared<NeuralCircleEffect>();
     }
     
     if (effect) {
