@@ -9,6 +9,7 @@ NeuralTileEffect::NeuralTileEffect() : Effect("NeuralTile") {
     parameters["iterations"] = 5.0f;     // Number of neural iterations
     parameters["movement"] = 0.3f;       // How much tiles move based on activation
     parameters["audioMod"] = 0.5f;       // Audio modulation strength
+    parameters["feedback"] = 0.0f;       // Feedback from previous frame
     gridWidth = 0;
     gridHeight = 0;
 }
@@ -37,6 +38,15 @@ void NeuralTileEffect::initializeNeurons(const cv::Mat& frame) {
             
             // Initial activation from brightness
             float brightness = (n.color[0] + n.color[1] + n.color[2]) / (3.0f * 255.0f);
+            
+            // Add feedback from previous frame if available
+            float feedbackAmount = parameters["feedback"];
+            if (!previousFrame.empty() && feedbackAmount > 0.0f) {
+                cv::Vec3b prevColor = previousFrame.at<cv::Vec3b>(py, px);
+                float prevBrightness = (prevColor[0] + prevColor[1] + prevColor[2]) / (3.0f * 255.0f);
+                brightness = brightness * (1.0f - feedbackAmount) + prevBrightness * feedbackAmount;
+            }
+            
             n.activation = brightness;
             n.nextActivation = brightness;
         }
@@ -180,6 +190,9 @@ cv::Mat NeuralTileEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, 
             }
         }
     }
+    
+    // Store current result for next frame feedback
+    result.copyTo(previousFrame);
     
     return result;
 }

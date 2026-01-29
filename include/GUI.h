@@ -29,7 +29,7 @@ private:
     tgui::ListBox::Ptr effectList;
     tgui::ListBox::Ptr chainList;
     tgui::ListBox::Ptr playlistBox;
-    tgui::Panel::Ptr paramPanel;
+    tgui::ScrollablePanel::Ptr paramPanel;
     tgui::Button::Ptr previewButton;
     tgui::Button::Ptr processButton;
     tgui::Label::Ptr statusLabel;

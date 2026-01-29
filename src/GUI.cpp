@@ -222,9 +222,11 @@ void GUI::setupUI() {
     paramLabel->setTextSize(16);
     rightPanel->add(paramLabel);
     
-    paramPanel = tgui::Panel::create();
+    paramPanel = tgui::ScrollablePanel::create();
     paramPanel->setSize("90%", "70%");
     paramPanel->setPosition("5%", "7%");
+    paramPanel->getVerticalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Automatic);
+    paramPanel->getHorizontalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Never);
     rightPanel->add(paramPanel);
     
     // File loading buttons at bottom of right panel
@@ -321,18 +323,18 @@ void GUI::updateParameterPanel() {
     auto effect = effectChain.getEffect(selected);
     if (!effect) return;
     
-    float yPos = 5.0f;
+    float yPos = 10.0f;
     const auto& paramNames = effect->getParameterNames();
     
     for (const auto& paramName : paramNames) {
         auto label = tgui::Label::create(paramName + ":");
-        label->setPosition("5%", tgui::String(yPos) + "%");
+        label->setPosition(10, yPos);
         label->setTextSize(12);
         paramPanel->add(label);
         
         auto editBox = tgui::EditBox::create();
-        editBox->setSize("60%", "8%");
-        editBox->setPosition("5%", tgui::String(yPos + 6) + "%");
+        editBox->setSize(150, 25);
+        editBox->setPosition(10, yPos + 20);
         editBox->setText(tgui::String(effect->getParameter(paramName)));
         
         // Save parameter on Return key
@@ -360,8 +362,12 @@ void GUI::updateParameterPanel() {
         
         paramPanel->add(editBox);
         
-        yPos += 16.0f;
+        yPos += 55.0f;
     }
+    
+    // Set content size for scrollable panel - width should match panel width, height based on content
+    float panelWidth = paramPanel->getSize().x;
+    paramPanel->setContentSize({panelWidth, yPos + 10.0f});
 }
 
 void GUI::loadVideoFile() {
