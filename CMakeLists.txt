@@ -54,6 +54,8 @@ set(SOURCES
     src/EffectChain.cpp
     src/VideoProcessor.cpp
     src/GUI.cpp
+    src/ParameterAutomation.cpp
+    src/AutomationWindow.cpp
 )
 
 # Executable

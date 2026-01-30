@@ -12,6 +12,7 @@
 #include "AudioColorEffect.h"
 #include "FractalEffect.h"
 #include "AudioPlaylist.h"
+#include "AutomationWindow.h"
 #include <memory>
 #include <thread>
 #include <mutex>
@@ -36,6 +37,9 @@ private:
     tgui::Slider::Ptr audioPositionSlider;
     tgui::Label::Ptr audioPositionLabel;
     tgui::CheckBox::Ptr verboseCheckbox;
+    
+    // Automation window
+    std::unique_ptr<AutomationWindow> automationWindow;
     
     sf::Texture previewTexture;
     sf::Sprite previewSprite;
@@ -78,6 +82,9 @@ private:
     void processVideoThreaded(const std::string& outputPath, float duration, AudioBuffer* audioToUse);
     void stopProcessing();
     void updateProcessingProgress();
+    void openAutomationWindow();
+    void updateAutomationWindow();
+    void applyAutomationAtFrame(int frameNumber);
 
 public:
     GUI(sf::RenderWindow& win);

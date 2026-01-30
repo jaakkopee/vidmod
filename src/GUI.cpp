@@ -7,6 +7,7 @@
 #include <cerrno>   // for errno
 
 GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), showingPreview(false), isProcessing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0) {
+    automationWindow = std::make_unique<AutomationWindow>(1000);
     setupUI();
 }
 
@@ -241,6 +242,13 @@ void GUI::setupUI() {
     loadImageButton->setPosition("5%", "87%");
     loadImageButton->onPress([this]() { loadImageFile(); });
     rightPanel->add(loadImageButton);
+    
+    // Automation button
+    auto automationButton = tgui::Button::create("Automation");
+    automationButton->setSize("90%", "5%");
+    automationButton->setPosition("5%", "94%");
+    automationButton->onPress([this]() { openAutomationWindow(); });
+    rightPanel->add(automationButton);
     
     // Status label at bottom of preview area (not covering the buttons!)
     statusLabel = tgui::Label::create("Ready");
@@ -958,6 +966,9 @@ void GUI::generatePreview() {
                          << " (sample " << audioPos << ")" << std::endl;
             }
             
+            // Apply automation (use frame 0 for static images)
+            applyAutomationAtFrame(0);
+            
             cv::Mat processedFrame = effectChain.applyEffects(previewFrame, activeAudioBuffer, 30.0f);
             updatePreview(processedFrame);
             statusLabel->setText("Preview generated");
@@ -1001,6 +1012,9 @@ void GUI::generatePreview() {
     // Set audio buffer position
     size_t audioPos = static_cast<size_t>(currentAudioPosition * activeAudioBuffer->size());
     activeAudioBuffer->setIndex(audioPos);
+    
+    // Apply automation for this frame
+    applyAutomationAtFrame(targetFrame);
     
     cv::Mat processedFrame = effectChain.applyEffects(frame, activeAudioBuffer, videoProcessor.getFPS());
     updatePreview(processedFrame);
@@ -1180,6 +1194,9 @@ void GUI::draw() {
         sf::RenderStates states = sf::RenderStates::Default;
         window.draw(previewSprite, states);
     }
+    
+    // Update automation window if open
+    updateAutomationWindow();
 }
 
 void GUI::processVideoThreaded(const std::string& outputPath, float duration, AudioBuffer* audioToUse) {
@@ -1287,6 +1304,9 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                 if (frameCount > totalFrames && frameCount % totalFrames == 1) {
                     std::cout << "Video looping - now at frame " << frameCount << " (loop #" << (frameCount / totalFrames + 1) << ")" << std::endl;
                 }
+                
+                // Apply automation for this frame
+                applyAutomationAtFrame(frameCount - 1);
                 
                 // Apply effects
                 cv::Mat processedFrame = effectChain.applyEffects(currentFrame, audioToUse, fps);
@@ -1398,5 +1418,48 @@ void GUI::stopProcessing() {
     if (isProcessing) {
         shouldStopProcessing = true;
         statusLabel->setText("Stopping...");
+    }
+}
+
+void GUI::openAutomationWindow() {
+    automationWindow->open(effectChain);
+}
+
+void GUI::updateAutomationWindow() {
+    if (automationWindow && automationWindow->isOpen()) {
+        automationWindow->handleEvents();
+        automationWindow->update();
+        automationWindow->draw();
+    }
+}
+
+void GUI::applyAutomationAtFrame(int frameNumber) {
+    if (!automationWindow) return;
+    
+    const auto& automations = automationWindow->getAutomations();
+    
+    // Apply automation for each effect that has automation data
+    for (const auto& effectAutomation : automations) {
+        const std::string& effectName = effectAutomation.first;
+        const auto& paramAutomations = effectAutomation.second;
+        
+        // Find the effect in the chain
+        for (size_t i = 0; i < effectChain.size(); ++i) {
+            auto effect = effectChain.getEffect(i);
+            if (effect && effect->getName() == effectName) {
+                // Apply each parameter automation
+                for (const auto& paramAuto : paramAutomations) {
+                    const std::string& paramName = paramAuto.first;
+                    const ParameterAutomation& automation = paramAuto.second;
+                    
+                    if (automation.hasKeyframes()) {
+                        // Use getActualValueAtFrame to scale to parameter's range
+                        float automatedValue = automation.getActualValueAtFrame(frameNumber);
+                        effect->setParameter(paramName, automatedValue);
+                    }
+                }
+                break;
+            }
+        }
     }
 }
