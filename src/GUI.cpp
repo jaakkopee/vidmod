@@ -1209,41 +1209,18 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
             int height = videoProcessor.getHeight();
             int totalFrames = videoProcessor.getTotalFrames();
             
-            // Load all video frames into VideoBuffer for efficient looping
-            std::cout << "Loading video frames into buffer..." << std::endl;
-            cv::VideoCapture cap(videoProcessor.getVideoPath());
-            if (!cap.isOpened()) {
+            // Create VideoBuffer with disk-based buffering (100 frames at a time)
+            std::cout << "Creating VideoBuffer with disk-based buffering..." << std::endl;
+            VideoBuffer videoBuffer(videoProcessor.getVideoPath(), 100);
+            
+            if (videoBuffer.getTotalFrames() == 0) {
+                std::cerr << "ERROR: Could not open video file!" << std::endl;
                 std::lock_guard<std::mutex> lock(previewMutex);
                 isProcessing = false;
                 return;
             }
             
-            std::vector<cv::Mat> videoFrames;
-            videoFrames.reserve(totalFrames);
-            cv::Mat frame;
-            int loadedFrames = 0;
-            
-            while (cap.read(frame)) {
-                videoFrames.push_back(frame.clone());
-                loadedFrames++;
-                if (loadedFrames % 30 == 0) {
-                    std::cout << "Loaded " << loadedFrames << " / " << totalFrames << " frames..." << std::endl;
-                }
-            }
-            cap.release();
-            
-            std::cout << "All " << loadedFrames << " frames loaded into buffer" << std::endl;
-            
-            if (loadedFrames == 0) {
-                std::cerr << "ERROR: No frames loaded from video!" << std::endl;
-                std::lock_guard<std::mutex> lock(previewMutex);
-                isProcessing = false;
-                return;
-            }
-            
-            // Create VideoBuffer for automatic looping
-            VideoBuffer videoBuffer(videoFrames);
-            std::cout << "VideoBuffer created with " << videoFrames.size() << " frames" << std::endl;
+            std::cout << "VideoBuffer created for " << videoBuffer.getTotalFrames() << " frames" << std::endl;
             
             // Calculate target frame count
             int targetFrames = totalFrames;
