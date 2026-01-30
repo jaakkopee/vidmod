@@ -6,7 +6,7 @@
 #include <cstring>  // for strerror
 #include <cerrno>   // for errno
 
-GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), showingPreview(false), isProcessing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0) {
+GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), showingPreview(false), isProcessing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), currentDisplayFrame(0) {
     automationWindow = std::make_unique<AutomationWindow>(1000);
     setupUI();
 }
@@ -343,7 +343,10 @@ void GUI::updateParameterPanel() {
         auto editBox = tgui::EditBox::create();
         editBox->setSize(150, 25);
         editBox->setPosition(10, yPos + 20);
-        editBox->setText(tgui::String(effect->getParameter(paramName)));
+        
+        // Get current value (may be automated)
+        float currentValue = effect->getParameter(paramName);
+        editBox->setText(tgui::String(currentValue));
         
         // Save parameter on Return key
         editBox->onReturnKeyPress([this, effect, paramName, editBox]() {
@@ -558,6 +561,10 @@ void GUI::loadImageFile() {
         loadedImage = cv::imread(path);
         if (!loadedImage.empty()) {
             currentImagePath = path;
+            
+            // Apply automation at frame 0 for image preview
+            applyAutomationAtFrame(0);
+            updateParameterDisplayValues();
             
             // Show preview of the loaded image with effects applied
             cv::Mat previewFrame = loadedImage.clone();
@@ -1015,6 +1022,7 @@ void GUI::generatePreview() {
     
     // Apply automation for this frame
     applyAutomationAtFrame(targetFrame);
+    updateParameterDisplayValues();
     
     cv::Mat processedFrame = effectChain.applyEffects(frame, activeAudioBuffer, videoProcessor.getFPS());
     updatePreview(processedFrame);
@@ -1461,5 +1469,32 @@ void GUI::applyAutomationAtFrame(int frameNumber) {
                 break;
             }
         }
+    }
+    
+    currentDisplayFrame = frameNumber;
+}
+
+void GUI::updateParameterDisplayValues() {
+    int selected = chainList->getSelectedItemIndex();
+    if (selected < 0) return;
+    
+    auto effect = effectChain.getEffect(selected);
+    if (!effect) return;
+    
+    // Update edit boxes with current (possibly automated) values
+    const auto& paramNames = effect->getParameterNames();
+    auto widgets = paramPanel->getWidgets();
+    
+    int editBoxIndex = 0;
+    for (const auto& paramName : paramNames) {
+        // Find the corresponding edit box (every other widget after labels)
+        if (editBoxIndex * 2 + 1 < widgets.size()) {
+            auto editBox = std::dynamic_pointer_cast<tgui::EditBox>(widgets[editBoxIndex * 2 + 1]);
+            if (editBox) {
+                float currentValue = effect->getParameter(paramName);
+                editBox->setText(tgui::String(currentValue));
+            }
+        }
+        editBoxIndex++;
     }
 }

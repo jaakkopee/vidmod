@@ -57,6 +57,7 @@ private:
     std::atomic<int> totalProcessingFrames;
     std::mutex previewMutex;
     cv::Mat latestProcessedFrame;
+    int currentDisplayFrame;
     
     void setupUI();
     void addEffectToChain(const std::string& effectName);
@@ -85,6 +86,7 @@ private:
     void openAutomationWindow();
     void updateAutomationWindow();
     void applyAutomationAtFrame(int frameNumber);
+    void updateParameterDisplayValues();
 
 public:
     GUI(sf::RenderWindow& win);

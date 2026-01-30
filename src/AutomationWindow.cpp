@@ -56,12 +56,42 @@ void AutomationWindow::setupUI() {
         if (paramComboBox->getSelectedItemIndex() >= 0) {
             selectedParam = paramComboBox->getSelectedItem().toStdString();
             
-            // Initialize automation with default range if not exists
-            if (!selectedEffect.empty() && effectAutomations[selectedEffect].count(selectedParam) == 0) {
-                effectAutomations[selectedEffect][selectedParam] = ParameterAutomation(0.0f, 1.0f);
+            // Get current parameter value
+            float currentValue = 1.0f;
+            if (effectChainRef && !selectedEffect.empty()) {
+                const auto& effects = effectChainRef->getEffects();
+                for (const auto& effect : effects) {
+                    if (effect->getName() == selectedEffect) {
+                        currentValue = effect->getParameter(selectedParam);
+                        break;
+                    }
+                }
             }
             
-            // Update range label
+            // Get multiplier from range selector
+            int rangeIndex = rangeComboBox->getSelectedItemIndex();
+            float multiplier = 1.0f;
+            switch (rangeIndex) {
+                case 0: multiplier = 0.0001f; break;  // /10000
+                case 1: multiplier = 0.001f; break;   // /1000
+                case 2: multiplier = 0.01f; break;    // /100
+                case 3: multiplier = 0.1f; break;     // /10
+                case 4: multiplier = 1.0f; break;     // 1
+                case 5: multiplier = 10.0f; break;    // *10
+                case 6: multiplier = 100.0f; break;   // *100
+                case 7: multiplier = 1000.0f; break;  // *1000
+                case 8: multiplier = 10000.0f; break; // *10000
+            }
+            
+            float minVal = 0.0f;
+            float maxVal = currentValue * multiplier;
+            
+            // Initialize automation with calculated range if not exists
+            if (!selectedEffect.empty() && effectAutomations[selectedEffect].count(selectedParam) == 0) {
+                effectAutomations[selectedEffect][selectedParam] = ParameterAutomation(minVal, maxVal);
+            }
+            
+            // Update range label to show current automation range
             if (!selectedEffect.empty() && effectAutomations[selectedEffect].count(selectedParam) > 0) {
                 auto& automation = effectAutomations[selectedEffect][selectedParam];
                 rangeLabel->setText("Range: " + tgui::String(automation.getMinValue()) + " - " + tgui::String(automation.getMaxValue()));
@@ -79,36 +109,64 @@ void AutomationWindow::setupUI() {
     rangeComboBox = tgui::ComboBox::create();
     rangeComboBox->setPosition(660, 10);
     rangeComboBox->setSize(120, 25);
-    rangeComboBox->addItem("0 - 0.009");
-    rangeComboBox->addItem("0 - 0.09");
-    rangeComboBox->addItem("0 - 0.9");
-    rangeComboBox->addItem("0 - 9");
-    rangeComboBox->addItem("0 - 99");
-    rangeComboBox->addItem("0 - 999");
-    rangeComboBox->addItem("0 - 9999");
-    rangeComboBox->setSelectedItemByIndex(2); // Default to 0 - 0.9
+    rangeComboBox->addItem("/10000");
+    rangeComboBox->addItem("/1000");
+    rangeComboBox->addItem("/100");
+    rangeComboBox->addItem("/10");
+    rangeComboBox->addItem("1");
+    rangeComboBox->addItem("*10");
+    rangeComboBox->addItem("*100");
+    rangeComboBox->addItem("*1000");
+    rangeComboBox->addItem("*10000");
+    rangeComboBox->setSelectedItemByIndex(4); // Default to 1
     rangeComboBox->onItemSelect([this](int index) {
-        if (!selectedEffect.empty() && !selectedParam.empty()) {
-            float minVal = 0.0f, maxVal = 1.0f;
-            switch (index) {
-                case 0: minVal = 0.0f; maxVal = 0.009f; break;
-                case 1: minVal = 0.0f; maxVal = 0.09f; break;
-                case 2: minVal = 0.0f; maxVal = 0.9f; break;
-                case 3: minVal = 0.0f; maxVal = 9.0f; break;
-                case 4: minVal = 0.0f; maxVal = 99.0f; break;
-                case 5: minVal = 0.0f; maxVal = 999.0f; break;
-                case 6: minVal = 0.0f; maxVal = 9999.0f; break;
+        // Get current parameter value if parameter is selected
+        float currentValue = 1.0f;
+        if (effectChainRef && !selectedEffect.empty() && !selectedParam.empty()) {
+            const auto& effects = effectChainRef->getEffects();
+            for (const auto& effect : effects) {
+                if (effect->getName() == selectedEffect) {
+                    currentValue = effect->getParameter(selectedParam);
+                    break;
+                }
             }
-            
-            // Update or create automation with new range
-            effectAutomations[selectedEffect][selectedParam] = ParameterAutomation(minVal, maxVal);
-            rangeLabel->setText("Range: " + tgui::String(minVal) + " - " + tgui::String(maxVal));
+        }
+        
+        // Calculate multiplier based on selection
+        float multiplier = 1.0f;
+        switch (index) {
+            case 0: multiplier = 0.0001f; break;  // /10000
+            case 1: multiplier = 0.001f; break;   // /1000
+            case 2: multiplier = 0.01f; break;    // /100
+            case 3: multiplier = 0.1f; break;     // /10
+            case 4: multiplier = 1.0f; break;     // 1
+            case 5: multiplier = 10.0f; break;    // *10
+            case 6: multiplier = 100.0f; break;   // *100
+            case 7: multiplier = 1000.0f; break;  // *1000
+            case 8: multiplier = 10000.0f; break; // *10000
+        }
+        
+        float minVal = 0.0f;
+        float maxVal = currentValue * multiplier;
+        
+        // Always update the range label
+        rangeLabel->setText("Range: " + tgui::String(minVal) + " - " + tgui::String(maxVal));
+        
+        // Update automation range if parameter is selected
+        if (!selectedEffect.empty() && !selectedParam.empty()) {
+            // If automation exists, update its range (preserving keyframes)
+            if (effectAutomations[selectedEffect].count(selectedParam) > 0) {
+                effectAutomations[selectedEffect][selectedParam].setRange(minVal, maxVal);
+            } else {
+                // Create new automation with this range
+                effectAutomations[selectedEffect][selectedParam] = ParameterAutomation(minVal, maxVal);
+            }
         }
     });
     gui.add(rangeComboBox);
     
     // Range display label
-    rangeLabel = tgui::Label::create("Range: 0 - 0.9");
+    rangeLabel = tgui::Label::create("Range: 0 - 1");
     rangeLabel->setPosition(600, 40);
     rangeLabel->setTextSize(12);
     gui.add(rangeLabel);
@@ -195,30 +253,35 @@ void AutomationWindow::handleEvents() {
                     static bool waitingForDoubleClick = false;
                     
                     if (waitingForDoubleClick && doubleClickClock.getElapsedTime().asMilliseconds() < 300) {
-                        handleCanvasClick(localPos, true);
+                        // Check if double-clicking near a keyframe to delete it
+                        bool deletedKeyframe = false;
+                        if (!selectedEffect.empty() && !selectedParam.empty()) {
+                            auto& automation = effectAutomations[selectedEffect][selectedParam];
+                            auto keyframes = automation.getAllKeyframes();
+                            
+                            for (const auto& kf : keyframes) {
+                                float kfX = (kf.frame / static_cast<float>(totalFrames)) * canvasSize.x;
+                                float kfY = canvasSize.y - (kf.value * canvasSize.y);
+                                
+                                float dist = std::sqrt((localPos.x - kfX) * (localPos.x - kfX) + 
+                                                      (localPos.y - kfY) * (localPos.y - kfY));
+                                if (dist < 10.0f) {
+                                    automation.removeKeyframe(kf.frame);
+                                    deletedKeyframe = true;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // Only add keyframe if we didn't delete one
+                        if (!deletedKeyframe) {
+                            handleCanvasClick(localPos, true);
+                        }
                         waitingForDoubleClick = false;
                     } else {
                         handleCanvasClick(localPos, false);
                         waitingForDoubleClick = true;
                         doubleClickClock.restart();
-                    }
-                } else if (mousePressed->button == sf::Mouse::Button::Right) {
-                    // Delete keyframe
-                    if (!selectedEffect.empty() && !selectedParam.empty()) {
-                        auto& automation = effectAutomations[selectedEffect][selectedParam];
-                        auto keyframes = automation.getAllKeyframes();
-                        
-                        for (const auto& kf : keyframes) {
-                            float kfX = (kf.frame / static_cast<float>(totalFrames)) * canvasSize.x;
-                            float kfY = canvasSize.y - (kf.value * canvasSize.y);
-                            
-                            float dist = std::sqrt((localPos.x - kfX) * (localPos.x - kfX) + 
-                                                  (localPos.y - kfY) * (localPos.y - kfY));
-                            if (dist < 10.0f) {
-                                automation.removeKeyframe(kf.frame);
-                                break;
-                            }
-                        }
                     }
                 }
             }
