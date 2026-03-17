@@ -39,6 +39,8 @@ private:
     bool draggingKeyframe;
     int hoveredKeyframe;
     sf::Vector2i lastMousePos;
+    sf::Vector2f mouseLocalPos;
+    bool mouseInCanvas = false;
     
     // Node visualization constants
     static constexpr float NODE_RADIUS = 8.0f;

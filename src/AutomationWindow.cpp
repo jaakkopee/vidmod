@@ -1,7 +1,21 @@
 #include "AutomationWindow.h"
 #include <iostream>
+#include <sstream>
+#include <iomanip>
 #include <cmath>
 #include <algorithm>
+
+static std::string formatFloat(float val) {
+    std::ostringstream oss;
+    float absVal = std::abs(val);
+    if (absVal < 0.001f)      oss << std::fixed << std::setprecision(5) << val;
+    else if (absVal < 0.01f)  oss << std::fixed << std::setprecision(4) << val;
+    else if (absVal < 0.1f)   oss << std::fixed << std::setprecision(3) << val;
+    else if (absVal < 10.0f)  oss << std::fixed << std::setprecision(2) << val;
+    else if (absVal < 100.0f) oss << std::fixed << std::setprecision(1) << val;
+    else                      oss << std::fixed << std::setprecision(0) << val;
+    return oss.str();
+}
 
 AutomationWindow::AutomationWindow(int frames) 
     : window(sf::VideoMode({800, 400}), "Parameter Automation")
@@ -243,6 +257,8 @@ void AutomationWindow::handleEvents() {
                 my >= canvasPos.y && my <= canvasPos.y + canvasSize.y) {
                 
                 sf::Vector2f localPos(mx - canvasPos.x, my - canvasPos.y);
+                mouseLocalPos = localPos;
+                mouseInCanvas = true;
                 updateHoveredKeyframe(localPos);
                 
                 // Continue dragging
@@ -251,6 +267,7 @@ void AutomationWindow::handleEvents() {
                 }
             } else {
                 hoveredKeyframe = -1;
+                mouseInCanvas = false;
             }
         }
         
@@ -408,7 +425,7 @@ void AutomationWindow::draw() {
         // Update range label
         float minVal = automation.getMinValue();
         float maxVal = automation.getMaxValue();
-        rangeLabel->setText("Range: " + std::to_string(static_cast<int>(minVal)) + " - " + std::to_string(static_cast<int>(maxVal)));
+        rangeLabel->setText("Range: " + formatFloat(minVal) + " - " + formatFloat(maxVal));
     } else {
         // No automation selected - show hint
         if (font.getInfo().family != "") {
@@ -461,23 +478,43 @@ void AutomationWindow::drawValueScale() {
     float maxVal = automation.getMaxValue();
     
     // Draw max value label
-    sf::Text maxText(font, std::to_string(static_cast<int>(maxVal)), 10);
+    sf::Text maxText(font, formatFloat(maxVal), 10);
     maxText.setFillColor(sf::Color(180, 200, 200));
     maxText.setPosition(sf::Vector2f(canvasPos.x + canvasSize.x + 8, canvasPos.y - 8));
     window.draw(maxText);
     
     // Draw mid value label
     float midVal = (minVal + maxVal) / 2.0f;
-    sf::Text midText(font, std::to_string(static_cast<int>(midVal)), 10);
+    sf::Text midText(font, formatFloat(midVal), 10);
     midText.setFillColor(sf::Color(160, 180, 180));
     midText.setPosition(sf::Vector2f(canvasPos.x + canvasSize.x + 8, canvasPos.y + canvasSize.y / 2 - 5));
     window.draw(midText);
     
     // Draw min value label
-    sf::Text minText(font, std::to_string(static_cast<int>(minVal)), 10);
+    sf::Text minText(font, formatFloat(minVal), 10);
     minText.setFillColor(sf::Color(140, 160, 160));
     minText.setPosition(sf::Vector2f(canvasPos.x + canvasSize.x + 8, canvasPos.y + canvasSize.y - 12));
     window.draw(minText);
+    
+    // Draw hover guideline + value when mouse is in canvas
+    if (mouseInCanvas && selectedEffectIndex >= 0 && !selectedParam.empty()) {
+        auto& a = effectAutomations[selectedEffectIndex][selectedParam];
+        float normY = 1.0f - std::clamp(mouseLocalPos.y / canvasSize.y, 0.0f, 1.0f);
+        float hoverVal = a.getMinValue() + normY * (a.getMaxValue() - a.getMinValue());
+        float lineY = canvasPos.y + mouseLocalPos.y;
+        
+        sf::VertexArray guideLine(sf::PrimitiveType::Lines, 2);
+        guideLine[0].position = sf::Vector2f(canvasPos.x, lineY);
+        guideLine[0].color = sf::Color(220, 220, 100, 100);
+        guideLine[1].position = sf::Vector2f(canvasPos.x + canvasSize.x, lineY);
+        guideLine[1].color = sf::Color(220, 220, 100, 100);
+        window.draw(guideLine);
+        
+        sf::Text hoverLabel(font, formatFloat(hoverVal), 10);
+        hoverLabel.setFillColor(sf::Color(255, 255, 150));
+        hoverLabel.setPosition(sf::Vector2f(canvasPos.x + canvasSize.x + 8, lineY - 6));
+        window.draw(hoverLabel);
+    }
     
     // Draw frame scale labels at canvas bottom
     const int frameMarkers = 5;
@@ -517,14 +554,22 @@ void AutomationWindow::drawConnectingLines() {
         float x2 = canvasPos.x + (kf2.frame / static_cast<float>(totalFrames)) * canvasSize.x;
         float y2 = canvasPos.y + canvasSize.y - (kf2.value * canvasSize.y);
         
+        // Color brightness scales with value: dim blue at low values, bright cyan at high
+        uint8_t a1 = static_cast<uint8_t>(80 + static_cast<int>(kf1.value * 175));
+        uint8_t a2 = static_cast<uint8_t>(80 + static_cast<int>(kf2.value * 175));
+        
         sf::Vertex v1;
         v1.position = sf::Vector2f(x1, y1);
-        v1.color = sf::Color(100, 180, 255);
+        v1.color = sf::Color(static_cast<uint8_t>(60 + kf1.value * 100), 
+                             static_cast<uint8_t>(120 + kf1.value * 135), 
+                             255, a1);
         lines.append(v1);
         
         sf::Vertex v2;
         v2.position = sf::Vector2f(x2, y2);
-        v2.color = sf::Color(100, 180, 255);
+        v2.color = sf::Color(static_cast<uint8_t>(60 + kf2.value * 100),
+                             static_cast<uint8_t>(120 + kf2.value * 135),
+                             255, a2);
         lines.append(v2);
     }
     
@@ -564,6 +609,17 @@ void AutomationWindow::drawNodes() {
             outlineWidth = 2.0f;
         }
         
+        // Scale node radius by normalized value when not in special state
+        if (!isSelected && !isHovered) {
+            radius = NODE_RADIUS * (0.6f + 0.8f * kf.value);
+            // Color shifts from dim green (low) to bright lime/yellow (high)
+            uint8_t r = static_cast<uint8_t>(60  + static_cast<int>(kf.value * 200));
+            uint8_t g = static_cast<uint8_t>(160 + static_cast<int>(kf.value * 95));
+            uint8_t b = static_cast<uint8_t>(60  - static_cast<int>(kf.value * 40));
+            fillColor = sf::Color(r, g, b);
+            outlineColor = sf::Color(r, g, b, 180);
+        }
+        
         // Draw node circle
         sf::CircleShape node(radius);
         node.setPosition(sf::Vector2f(x - radius, y - radius));
@@ -572,17 +628,15 @@ void AutomationWindow::drawNodes() {
         node.setOutlineThickness(outlineWidth);
         window.draw(node);
         
-        // Draw value label above node (only if selected or hovered)
-        if (isSelected || isHovered) {
-            if (font.getInfo().family != "") {
-                auto& automation_ref = effectAutomations[selectedEffectIndex][selectedParam];
-                float actualValue = automation_ref.getActualValueAtFrame(kf.frame);
-                
-                sf::Text valueLabel(font, std::to_string(static_cast<int>(actualValue)), 9);
-                valueLabel.setFillColor(sf::Color::White);
-                valueLabel.setPosition(sf::Vector2f(x - 15, y - radius - 20));
-                window.draw(valueLabel);
-            }
+        // Draw value label above node (when selected, hovered, or always-on for context)
+        if ((isSelected || isHovered) && font.getInfo().family != "") {
+            auto& automation_ref = effectAutomations[selectedEffectIndex][selectedParam];
+            float actualValue = automation_ref.getActualValueAtFrame(kf.frame);
+            
+            sf::Text valueLabel(font, formatFloat(actualValue), 9);
+            valueLabel.setFillColor(sf::Color::White);
+            valueLabel.setPosition(sf::Vector2f(x - 15, y - radius - 20));
+            window.draw(valueLabel);
         }
     }
 }
