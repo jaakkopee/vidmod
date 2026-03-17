@@ -20,6 +20,9 @@ This document describes some example effect chains you can create in the applica
 **Single Effect**: Shadow
 **Parameters**:
 - shadow_coeff: 0.3
+- kernel_size: 5
+- morph_iterations: 1
+- audio_gain: 0.6
 
 **Result**: Augmented shadows throughout the video.
 
@@ -27,6 +30,9 @@ This document describes some example effect chains you can create in the applica
 **Single Effect**: Light
 **Parameters**:
 - light_coeff: 0.3
+- kernel_size: 5
+- morph_iterations: 1
+- audio_gain: 0.6
 
 **Result**: Enhanced highlights and bright areas.
 
@@ -41,18 +47,18 @@ This document describes some example effect chains you can create in the applica
 
 ### 5. Diffuse and Light
 **Effect Chain**:
-1. Diffuse (diffuse_coeff: 0.15, iterations: 2)
-2. Light (light_coeff: 0.25)
+1. Diffuse (diffuse_coeff: 0.15, iterations: 2, kernel_size: 5, kernel_growth: 1, iteration_decay: 0.9)
+2. Light (light_coeff: 0.25, kernel_size: 5, morph_iterations: 1)
 
 **Result**: Smooth, blurred colors with bright highlights.
 
 ### 6. Full Audio-Reactive Suite
 **Effect Chain**:
-1. AudioColor (color_coeff: 1.5)
+1. AudioColor (color_coeff: 1.5, mode: 2, hue_strength: 1.0, saturation_strength: 1.2, value_strength: 0.8, audio_gain: 0.7)
 2. FFT (fft_r: 0.8, fft_g: 0.8, fft_b: 0.8)
-3. Diffuse (diffuse_coeff: 0.1, iterations: 1)
-4. Shadow (shadow_coeff: 0.15)
-5. Light (light_coeff: 0.15)
+3. Diffuse (diffuse_coeff: 0.1, iterations: 1, kernel_size: 3, kernel_growth: 0, iteration_decay: 1.0, audio_gain: 0.5)
+4. Shadow (shadow_coeff: 0.15, kernel_size: 3, morph_iterations: 1, audio_gain: 0.5)
+5. Light (light_coeff: 0.15, kernel_size: 3, morph_iterations: 1, audio_gain: 0.5)
 
 **Result**: Complex audio-reactive visual effects with enhanced depth.
 
@@ -68,9 +74,9 @@ This document describes some example effect chains you can create in the applica
 
 ### 8. Subtle Enhancement
 **Effect Chain**:
-1. Diffuse (diffuse_coeff: 0.05, iterations: 1)
-2. Shadow (shadow_coeff: 0.08)
-3. Light (light_coeff: 0.08)
+1. Diffuse (diffuse_coeff: 0.05, iterations: 1, kernel_size: 3, kernel_growth: 0, iteration_decay: 1.0)
+2. Shadow (shadow_coeff: 0.08, kernel_size: 3, morph_iterations: 1)
+3. Light (light_coeff: 0.08, kernel_size: 3, morph_iterations: 1)
 
 **Result**: Subtle smoothing and depth enhancement.
 
@@ -80,6 +86,19 @@ This document describes some example effect chains you can create in the applica
 2. AudioColor (color_coeff: 1.0)
 
 **Result**: Glitchy, distorted colors that react to audio.
+
+### 10. Evolving Bloom (Advanced)
+**Effect Chain**:
+1. Diffuse (diffuse_coeff: 0.16, iterations: 4, kernel_size: 3, kernel_growth: 1, iteration_decay: 0.82, audio_gain: 0.55)
+2. Light (light_coeff: 0.12, kernel_size: 5, morph_iterations: 2, audio_gain: 0.40)
+3. AudioColor (color_coeff: 0.9, mode: 2, hue_strength: 0.7, saturation_strength: 1.1, value_strength: 0.9, audio_gain: 0.5)
+
+**Result**: A soft bloom that grows across iterations while preserving detail in bright zones.
+
+**Automation idea**:
+- Animate `Diffuse.kernel_growth` from `0 -> 2` over the song section for expanding glow.
+- Animate `Diffuse.iteration_decay` from `1.0 -> 0.75` to make later diffusion passes stronger relative to early ones.
+- Keep `Light.morph_iterations` fixed to avoid flicker while the bloom evolves.
 
 ## Tips
 
@@ -91,6 +110,44 @@ This document describes some example effect chains you can create in the applica
 6. **Experimentation**: The best results often come from unexpected combinations!
 
 ## Parameter Guidelines
+
+## Newly Exposed Parameters
+
+### Shadow
+- `shadow_coeff`: Blend amount for local-minima shadowing
+- `kernel_size`: Erosion kernel size (odd values work best)
+- `morph_iterations`: Number of erosion passes
+- `audio_gain`: Audio influence on `shadow_coeff`
+
+Suggested start: `shadow_coeff=0.15`, `kernel_size=3`, `morph_iterations=1`, `audio_gain=0.5`
+
+### Light
+- `light_coeff`: Blend amount for local-maxima highlighting
+- `kernel_size`: Dilation kernel size (odd values work best)
+- `morph_iterations`: Number of dilation passes
+- `audio_gain`: Audio influence on `light_coeff`
+
+Suggested start: `light_coeff=0.15`, `kernel_size=3`, `morph_iterations=1`, `audio_gain=0.5`
+
+### AudioColor
+- `color_coeff`: Overall color modulation amount
+- `mode`: `0=RGB`, `1=HSV dominant`, `2=HSV spectrum`
+- `hue_strength`: Strength of hue rotation/shifts
+- `saturation_strength`: Strength of saturation modulation
+- `value_strength`: Strength of brightness/value modulation
+- `audio_gain`: Overall audio influence scale
+
+Suggested start: `color_coeff=1.0`, `mode=2`, `hue_strength=1.0`, `saturation_strength=1.2`, `value_strength=0.8`, `audio_gain=0.7`
+
+### Diffuse
+- `diffuse_coeff`: Base blend amount per iteration
+- `iterations`: Number of diffusion passes
+- `kernel_size`: Base box-filter kernel size (odd values)
+- `kernel_growth`: Per-iteration kernel growth (0 keeps fixed kernel)
+- `iteration_decay`: Multiplies diffusion strength each pass
+- `audio_gain`: Audio influence on `diffuse_coeff`
+
+Suggested start: `diffuse_coeff=0.12`, `iterations=3`, `kernel_size=5`, `kernel_growth=1`, `iteration_decay=0.9`, `audio_gain=0.5`
 
 ## Audio Gain Guidelines
 
