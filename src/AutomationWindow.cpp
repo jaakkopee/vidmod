@@ -71,6 +71,16 @@ void AutomationWindow::setupUI() {
         if (paramComboBox->getSelectedItemIndex() >= 0 && selectedEffectIndex >= 0) {
             selectedParam = paramComboBox->getSelectedItem().toStdString();
             
+            // Capture the base (default) value the first time this parameter is selected.
+            // We must do this BEFORE any automation can overwrite the live value.
+            if (effectChainRef && !parameterBaseValues[selectedEffectIndex].count(selectedParam)) {
+                const auto& effects = effectChainRef->getEffects();
+                if (selectedEffectIndex < static_cast<int>(effects.size())) {
+                    parameterBaseValues[selectedEffectIndex][selectedParam] =
+                        effects[selectedEffectIndex]->getParameter(selectedParam);
+                }
+            }
+            
             // Load saved range index for this parameter, or default to 4 ("1x")
             int savedRangeIndex = 4;  // Default multiplier
             if (parameterRangeIndices[selectedEffectIndex].count(selectedParam) > 0) {
@@ -108,12 +118,20 @@ void AutomationWindow::setupUI() {
             parameterRangeIndices[selectedEffectIndex][selectedParam] = index;
         }
         
-        // Get current parameter value if parameter is selected
-        float currentValue = 1.0f;
-        if (effectChainRef && selectedEffectIndex >= 0 && !selectedParam.empty()) {
-            const auto& effects = effectChainRef->getEffects();
-            if (selectedEffectIndex < static_cast<int>(effects.size())) {
-                currentValue = effects[selectedEffectIndex]->getParameter(selectedParam);
+        // Use the stored base value — NOT the live parameter value which may have
+        // been overwritten by automation. Fall back to 1.0 if somehow not stored yet.
+        float baseValue = 1.0f;
+        if (selectedEffectIndex >= 0 && !selectedParam.empty()) {
+            auto& baseMap = parameterBaseValues[selectedEffectIndex];
+            if (baseMap.count(selectedParam)) {
+                baseValue = baseMap[selectedParam];
+            } else if (effectChainRef) {
+                // First time the range fires before param-select captured it
+                const auto& effects = effectChainRef->getEffects();
+                if (selectedEffectIndex < static_cast<int>(effects.size())) {
+                    baseValue = effects[selectedEffectIndex]->getParameter(selectedParam);
+                    baseMap[selectedParam] = baseValue;
+                }
             }
         }
         
@@ -132,7 +150,7 @@ void AutomationWindow::setupUI() {
         }
         
         float minVal = 0.0f;
-        float maxVal = currentValue * multiplier;
+        float maxVal = baseValue * multiplier;
         
         // Always update the range label
         rangeLabel->setText("Range: " + tgui::String(minVal) + " - " + tgui::String(maxVal));
@@ -175,6 +193,7 @@ void AutomationWindow::setupUI() {
     hoveredKeyframe = -1;
     selectedEffectIndex = -1;
     parameterRangeIndices.clear();
+    parameterBaseValues.clear();
 }
 
 void AutomationWindow::open(EffectChain& chain) {
@@ -238,13 +257,19 @@ void AutomationWindow::handleEvents() {
                 mouseInCanvas = true;
                 updateHoveredKeyframe(localPos);
                 
-                // Continue dragging
                 if (draggingKeyframe) {
                     handleCanvasDrag(localPos);
                 }
             } else {
                 hoveredKeyframe = -1;
                 mouseInCanvas = false;
+                
+                // Continue dragging even outside canvas, clamped to canvas bounds
+                if (draggingKeyframe) {
+                    float clampedX = std::clamp(mx - canvasPos.x, 0.0f, canvasSize.x);
+                    float clampedY = std::clamp(my - canvasPos.y, 0.0f, canvasSize.y);
+                    handleCanvasDrag(sf::Vector2f(clampedX, clampedY));
+                }
             }
         }
         
@@ -259,26 +284,23 @@ void AutomationWindow::handleEvents() {
                 sf::Vector2f localPos(mx - canvasPos.x, my - canvasPos.y);
                 
                 if (mousePressed->button == sf::Mouse::Button::Left) {
-                    // Check for double-click (add new node)
                     static sf::Clock doubleClickClock;
                     static bool waitingForDoubleClick = false;
                     
                     int keyframeAtPos = findKeyframeAtPosition(localPos);
                     
-                    if (waitingForDoubleClick && doubleClickClock.getElapsedTime().asMilliseconds() < 300) {
-                        // Double-click - add new keyframe
+                    if (keyframeAtPos >= 0) {
+                        // There is a node here — always select/drag it, never add
+                        selectedKeyframe = keyframeAtPos;
+                        draggingKeyframe = true;
+                        waitingForDoubleClick = false;  // reset so next empty-space click is clean
+                    } else if (waitingForDoubleClick && doubleClickClock.getElapsedTime().asMilliseconds() < 300) {
+                        // Double-click on empty space — add new keyframe
                         handleCanvasClick(localPos, true);
                         waitingForDoubleClick = false;
                     } else {
-                        // Single click - select/drag existing keyframe
-                        if (keyframeAtPos >= 0) {
-                            selectedKeyframe = keyframeAtPos;
-                            draggingKeyframe = true;
-                        } else {
-                            // Click on empty canvas
-                            handleCanvasClick(localPos, false);
-                        }
-                        
+                        // Single click on empty space
+                        handleCanvasClick(localPos, false);
                         waitingForDoubleClick = true;
                         doubleClickClock.restart();
                     }
@@ -487,10 +509,29 @@ void AutomationWindow::drawValueScale() {
         guideLine[1].color = sf::Color(220, 220, 100, 100);
         window.draw(guideLine);
         
+        // Value label on the right (outside canvas)
         sf::Text hoverLabel(font, formatFloat(hoverVal), 10);
         hoverLabel.setFillColor(sf::Color(255, 255, 150));
         hoverLabel.setPosition(sf::Vector2f(canvasPos.x + canvasSize.x + 8, lineY - 6));
         window.draw(hoverLabel);
+        
+        // Value label inside canvas left edge with dark background for readability
+        if (font.getInfo().family != "") {
+            sf::Text inlineLabel(font, formatFloat(hoverVal), 10);
+            inlineLabel.setFillColor(sf::Color(255, 255, 150));
+            sf::FloatRect bounds = inlineLabel.getLocalBounds();
+            float lx = canvasPos.x + 4.0f;
+            float ly = lineY - bounds.size.y - 4.0f;
+            // Clamp so it stays inside the canvas
+            if (ly < canvasPos.y) ly = lineY + 3.0f;
+            
+            sf::RectangleShape bg(sf::Vector2f(bounds.size.x + 6.0f, bounds.size.y + 4.0f));
+            bg.setFillColor(sf::Color(20, 20, 25, 200));
+            bg.setPosition(sf::Vector2f(lx - 2.0f, ly - 1.0f));
+            window.draw(bg);
+            inlineLabel.setPosition(sf::Vector2f(lx, ly));
+            window.draw(inlineLabel);
+        }
     }
     
     // Draw frame scale labels at canvas bottom

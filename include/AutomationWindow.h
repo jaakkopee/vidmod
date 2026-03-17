@@ -17,6 +17,8 @@ private:
     std::map<int, std::map<std::string, ParameterAutomation>> effectAutomations;
     // Range multiplier index for each parameter (0-8)
     std::map<int, std::map<std::string, int>> parameterRangeIndices;
+    // Original default value captured the first time a parameter is selected
+    std::map<int, std::map<std::string, float>> parameterBaseValues;
     int selectedEffectIndex;  // Index of effect instance in the chain (-1 if none)
     std::string selectedParam;
     int totalFrames;
