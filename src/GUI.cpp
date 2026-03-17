@@ -7,6 +7,11 @@
 #include <cmath>
 #include <cstring>  // for strerror
 #include <cerrno>   // for errno
+#include <thread>
+#include <fstream>
+#include <filesystem>
+#include <chrono>
+#include <sys/wait.h>  // for WEXITSTATUS
 
 namespace {
 std::vector<std::string> withAudioGainParam(const std::vector<std::string>& paramNames) {
@@ -16,9 +21,79 @@ std::vector<std::string> withAudioGainParam(const std::vector<std::string>& para
     }
     return names;
 }
+
+int runFfmpegWithProgressPipe(const std::string& ffmpegCommand,
+                               const std::string& progressPath,
+                               std::atomic<int>& progressValue,
+                               std::atomic<int>& progressTotal) {
+    namespace fs = std::filesystem;
+
+    std::error_code ec;
+    fs::remove(progressPath, ec);
+
+    progressTotal = 100;
+    progressValue = 10;
+
+    // Capture exit code from FFmpeg in a shared variable
+    std::atomic<int> ffmpegExitCode(-1);
+    
+    // Run FFmpeg in background.
+    std::thread ffmpegThread([ffmpegCommand, &ffmpegExitCode]() {
+        int result = system(ffmpegCommand.c_str());
+        // system() returns -1 on error, otherwise (exit_code << 8) | signal
+        // Extract actual exit code from the status
+        if (result == -1) {
+            ffmpegExitCode = -1;
+        } else {
+            ffmpegExitCode = WEXITSTATUS(result);
+        }
+    });
+
+    int lastProgress = 10;
+    int pollCount = 0;
+    
+    // Wait for FFmpeg to complete, updating progress every 100ms until done.
+    // Allow up to 5 minutes (300 seconds) for long muxing operations.
+    const int maxPolls = 3000;
+    while (ffmpegThread.joinable() && pollCount < maxPolls) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        
+        pollCount++;
+        int progress = std::min(99, 10 + (pollCount / 10));  // Slow progression toward 99%
+        if (progress > lastProgress) {
+            progressValue = progress;
+            lastProgress = progress;
+        }
+        
+        // Check if thread has finished
+        if (!ffmpegThread.joinable()) {
+            break;
+        }
+    }
+
+    if (ffmpegThread.joinable()) {
+        ffmpegThread.join();
+    }
+    
+    // If FFmpeg didn't complete in time, return error
+    if (ffmpegExitCode == -1) {
+        std::cerr << "Error: FFmpeg process did not complete or encountered an error" << std::endl;
+        progressValue = 0;
+        return 1;
+    }
+    
+    if (ffmpegExitCode != 0) {
+        std::cerr << "Error: FFmpeg exited with code " << ffmpegExitCode << std::endl;
+        progressValue = 0;
+        return ffmpegExitCode;
+    }
+    
+    progressValue = 100;
+    return 0;
+}
 }
 
-GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), showingPreview(false), isProcessing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), currentDisplayFrame(0) {
+GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), showingPreview(false), isProcessing(false), isAudioMuxing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), currentDisplayFrame(0) {
     automationWindow = std::make_unique<AutomationWindow>(1000);
     setupUI();
 }
@@ -1070,19 +1145,23 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
     writer.release();
 
     if (shouldStopProcessing) {
+        isAudioMuxing = false;
         return false;
     }
 
     if (!audioToUse) {
+        isAudioMuxing = false;
         return true;
     }
 
     // Keep progress one step short while muxing runs.
     currentProcessingFrame = frameCount;
+    isAudioMuxing = true;
 
     std::string tempAudioPath = outputPath + ".temp_audio.wav";
     if (!audioToUse->saveToWAV(tempAudioPath)) {
         std::cerr << "Failed to save audio to WAV file" << std::endl;
+        isAudioMuxing = false;
         return true;
     }
 
@@ -1090,18 +1169,23 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
     if (rename(outputPath.c_str(), tempVideoPath.c_str()) != 0) {
         std::cerr << "Failed to rename video file. Error: " << strerror(errno) << std::endl;
         remove(tempAudioPath.c_str());
+        isAudioMuxing = false;
         return true;
     }
 
-    std::string ffmpegCmd = "ffmpeg -y -nostdin -loglevel warning -i \"" + tempVideoPath +
-        "\" -i \"" + tempAudioPath + "\" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k "
-        "-disposition:a:0 default \"" + outputPath + "\"";
-    int result = system(ffmpegCmd.c_str());
+    std::string ffmpegProgressPath = outputPath + ".ffmpeg_progress.txt";
+    std::string ffmpegLogPath = outputPath + ".ffmpeg.log";
+    std::string ffmpegCmd = "ffmpeg -y -hide_banner -loglevel error -i \"" + tempVideoPath +
+        "\" -i \"" + tempAudioPath + "\" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k -shortest "
+        "-disposition:a:0 default \"" + outputPath + "\" > \"" + ffmpegLogPath + "\" 2>&1 < /dev/null";
 
-    // Mark muxing step complete.
-    currentProcessingFrame = frameCount + 1;
+    // Restart progress bar for muxing stage and update via -progress option.
+    totalProcessingFrames = 100;
+    currentProcessingFrame = 0;
+    int result = runFfmpegWithProgressPipe(ffmpegCmd, ffmpegProgressPath, currentProcessingFrame, totalProcessingFrames);
 
     remove(tempAudioPath.c_str());
+    std::filesystem::remove(ffmpegProgressPath);
 
     if (result != 0) {
         std::cerr << "FFmpeg muxing failed with code: " << result << std::endl;
@@ -1111,6 +1195,8 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
     } else {
         remove(tempVideoPath.c_str());
     }
+
+    isAudioMuxing = false;
 
     return true;
 }
@@ -1124,6 +1210,7 @@ void GUI::processImageLoopThreaded(const std::string& outputPath, float duration
 
     shouldStopProcessing = false;
     isProcessing = true;
+    isAudioMuxing = false;
     currentProcessingFrame = 0;
     totalProcessingFrames = std::max(1, static_cast<int>(std::lround(duration * fps)));
 
@@ -1413,6 +1500,7 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
     
     shouldStopProcessing = false;
     isProcessing = true;
+    isAudioMuxing = false;
     currentProcessingFrame = 0;
     
     statusLabel->setText("Starting processing...");
@@ -1535,6 +1623,7 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
             if (audioToUse && !shouldStopProcessing) {
                 // Keep one final step reserved for muxing.
                 currentProcessingFrame = targetFrames;
+                isAudioMuxing = true;
                 std::cout << "Starting audio muxing process..." << std::endl;
                 std::cout << "Audio buffer size: " << audioToUse->size() << " samples" << std::endl;
                 std::string tempAudioPath = outputPath + ".temp_audio.wav";
@@ -1547,16 +1636,20 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                     
                     if (rename(outputPath.c_str(), tempVideoPath.c_str()) == 0) {
                         std::cout << "Video renamed successfully to: " << tempVideoPath << std::endl;
-                        // Use -nostdin to prevent hanging, show warnings/errors but suppress info
-                        // Map streams explicitly and set audio as default
-                        // Removed -shortest to allow video looping when audio is longer
-                        std::string ffmpegCmd = "ffmpeg -y -nostdin -loglevel warning -i \"" + tempVideoPath + 
-                            "\" -i \"" + tempAudioPath + "\" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k " +
-                            "-disposition:a:0 default \"" + outputPath + "\"";
-                        std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
-                        int result = system(ffmpegCmd.c_str());
+                        // Map streams explicitly and set audio as default.
+                        std::string ffmpegProgressPath = outputPath + ".ffmpeg_progress.txt";
+                        std::string ffmpegLogPath = outputPath + ".ffmpeg.log";
+                        std::string ffmpegCmd = "ffmpeg -y -hide_banner -loglevel error -i \"" + tempVideoPath +
+                            "\" -i \"" + tempAudioPath + "\" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k -shortest " +
+                            "-disposition:a:0 default \"" + outputPath + "\" > \"" + ffmpegLogPath + "\" 2>&1 < /dev/null";
+                        std::cout << "Running FFmpeg with output log: " << ffmpegLogPath << std::endl;
+
+                        // Restart progress bar for muxing stage and update via -progress option.
+                        totalProcessingFrames = 100;
+                        currentProcessingFrame = 0;
+                        int result = runFfmpegWithProgressPipe(ffmpegCmd, ffmpegProgressPath, currentProcessingFrame, totalProcessingFrames);
                         std::cout << "FFmpeg returned code: " << result << std::endl;
-                        
+
                         if (result != 0) {
                             std::cerr << "FFmpeg muxing failed with code: " << result << std::endl;
                             if (rename(tempVideoPath.c_str(), outputPath.c_str()) != 0) {
@@ -1567,7 +1660,7 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                             std::cout << "Removing temp video: " << tempVideoPath << std::endl;
                             remove(tempVideoPath.c_str());
                         }
-                        currentProcessingFrame = targetFrames + 1;
+                        std::filesystem::remove(ffmpegProgressPath);
                     } else {
                         std::cerr << "Failed to rename video file. Error: " << strerror(errno) << std::endl;
                     }
@@ -1576,6 +1669,7 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                 } else {
                     std::cerr << "Failed to save audio to WAV file" << std::endl;
                 }
+                isAudioMuxing = false;
             } else {
                 if (!audioToUse) {
                     std::cout << "No audio buffer available for muxing" << std::endl;
@@ -1586,10 +1680,12 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
             }
             
             std::cout << "Processing thread finishing..." << std::endl;
+            isAudioMuxing = false;
             isProcessing = false;
             
         } catch (const std::exception& e) {
             std::cerr << "Processing error: " << e.what() << std::endl;
+            isAudioMuxing = false;
             isProcessing = false;
         }
     });
@@ -1610,7 +1706,8 @@ void GUI::updateProcessingProgress() {
         int total = totalProcessingFrames.load();
         if (total > 0) {
             int percentage = (100 * current) / total;
-            statusLabel->setText("Processing: " + std::to_string(current) + "/" + 
+            const std::string phaseLabel = isAudioMuxing ? "Audio muxing" : "Processing video";
+            statusLabel->setText(phaseLabel + ": " + std::to_string(current) + "/" +
                                std::to_string(total) + " (" + std::to_string(percentage) + "%)");
             if (processingProgressBar) {
                 processingProgressBar->setVisible(true);
@@ -1638,6 +1735,7 @@ void GUI::updateProcessingProgress() {
         } else {
             statusLabel->setText("Processing complete!");
         }
+        isAudioMuxing = false;
     }
 }
 

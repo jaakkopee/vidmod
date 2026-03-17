@@ -1,6 +1,7 @@
 #include "VideoProcessor.h"
 #include <sndfile.h>
 #include <iostream>
+#include <cstring>
 
 VideoProcessor::VideoProcessor() 
     : fps(30.0f), width(0), height(0), totalFrames(0), currentFrame(0), verbose(true) {}
@@ -36,6 +37,7 @@ bool VideoProcessor::loadAudio(const std::string& audioFile) {
     audioPath = audioFile;
     
     SF_INFO sfInfo;
+    memset(&sfInfo, 0, sizeof(sfInfo));
     SNDFILE* sndFile = sf_open(audioFile.c_str(), SFM_READ, &sfInfo);
     
     if (!sndFile) {
@@ -242,10 +244,11 @@ bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectCha
             return true;
         }
         
-        // Build FFmpeg command to mux audio and video
-        // Re-encode video with libx264 to fix metadata issues from OpenCV's mp4v codec
-        std::string ffmpegCmd = "ffmpeg -y -i \"" + tempVideoPath + "\" -i \"" + tempAudioPath + 
-            "\" -c:v libx264 -preset fast -crf 18 -c:a aac -shortest \"" + videoWithAudioPath + "\" 2>&1";
+        // Build FFmpeg command to mux audio and video.
+        // Re-encode video with libx264 to fix metadata issues from OpenCV's mp4v codec.
+        std::string ffmpegCmd = "ffmpeg -y -nostdin -loglevel warning -i \"" + tempVideoPath + "\" -i \"" + tempAudioPath +
+            "\" -map 0:v:0 -map 1:a:0 -c:v libx264 -preset fast -crf 18 -c:a aac -b:a 192k -shortest "
+            "-disposition:a:0 default \"" + videoWithAudioPath + "\"";
         
         std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
         int result = system(ffmpegCmd.c_str());
@@ -362,10 +365,11 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
             return true;
         }
         
-        // Build FFmpeg command to mux audio and video
-        // Re-encode video with libx264 to fix metadata issues from OpenCV's mp4v codec
-        std::string ffmpegCmd = "ffmpeg -y -i \"" + tempVideoPath + "\" -i \"" + tempAudioPath + 
-            "\" -c:v libx264 -preset fast -crf 18 -c:a aac -shortest \"" + videoWithAudioPath + "\" 2>&1";
+        // Build FFmpeg command to mux audio and video.
+        // Re-encode video with libx264 to fix metadata issues from OpenCV's mp4v codec.
+        std::string ffmpegCmd = "ffmpeg -y -nostdin -loglevel warning -i \"" + tempVideoPath + "\" -i \"" + tempAudioPath +
+            "\" -map 0:v:0 -map 1:a:0 -c:v libx264 -preset fast -crf 18 -c:a aac -b:a 192k -shortest "
+            "-disposition:a:0 default \"" + videoWithAudioPath + "\"";
         
         std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
         int result = system(ffmpegCmd.c_str());
@@ -479,10 +483,11 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
             return true;
         }
         
-        // Build FFmpeg command to mux audio and video
-        // Re-encode video with libx264 to fix metadata issues from OpenCV's mp4v codec
-        std::string ffmpegCmd = "ffmpeg -y -i \"" + tempVideoPath + "\" -i \"" + tempAudioPath + 
-            "\" -c:v libx264 -preset fast -crf 18 -c:a aac -shortest \"" + videoWithAudioPath + "\" 2>&1";
+        // Build FFmpeg command to mux audio and video.
+        // Re-encode video with libx264 to fix metadata issues from OpenCV's mp4v codec.
+        std::string ffmpegCmd = "ffmpeg -y -nostdin -loglevel warning -i \"" + tempVideoPath + "\" -i \"" + tempAudioPath +
+            "\" -map 0:v:0 -map 1:a:0 -c:v libx264 -preset fast -crf 18 -c:a aac -b:a 192k -shortest "
+            "-disposition:a:0 default \"" + videoWithAudioPath + "\"";
         
         std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
         int result = system(ffmpegCmd.c_str());

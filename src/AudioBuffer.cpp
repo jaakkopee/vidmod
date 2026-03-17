@@ -4,6 +4,7 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream>
+#include <cstring>
 
 AudioBuffer::AudioBuffer(const std::vector<float>& audio, int sr) 
     : CircularBuffer<float>(audio), sampleRate(sr) {}
@@ -126,6 +127,7 @@ float AudioBuffer::getRMS(const std::vector<float>& audioBuffer) {
 
 bool AudioBuffer::saveToWAV(const std::string& outputPath) const {
     SF_INFO sfInfo;
+    memset(&sfInfo, 0, sizeof(sfInfo));
     sfInfo.samplerate = sampleRate;
     sfInfo.channels = 1;  // Mono
     sfInfo.format = SF_FORMAT_WAV | SF_FORMAT_PCM_16;

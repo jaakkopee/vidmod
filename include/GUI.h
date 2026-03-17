@@ -53,6 +53,7 @@ private:
     // Threading for video processing
     std::unique_ptr<std::thread> processingThread;
     std::atomic<bool> isProcessing;
+    std::atomic<bool> isAudioMuxing;
     std::atomic<bool> shouldStopProcessing;
     std::atomic<int> currentProcessingFrame;
     std::atomic<int> totalProcessingFrames;
