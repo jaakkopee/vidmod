@@ -37,13 +37,28 @@ private:
     // Interaction state
     int selectedKeyframe;
     bool draggingKeyframe;
+    int hoveredKeyframe;
     sf::Vector2i lastMousePos;
     
+    // Node visualization constants
+    static constexpr float NODE_RADIUS = 8.0f;
+    static constexpr float NODE_HOVER_RADIUS = 10.0f;
+    static constexpr float NODE_SNAP_DISTANCE = 12.0f;
+    
+    // Helper methods
     void setupUI();
     void updateParamList();
-    void drawAutomationCurve();
+    void drawAutomationCanvas();
+    void drawGridBackground();
+    void drawValueScale();
+    void drawNodes();
+    void drawConnectingLines();
     void handleCanvasClick(sf::Vector2f pos, bool doubleClick);
     void handleCanvasDrag(sf::Vector2f pos);
+    
+    // Utility
+    int findKeyframeAtPosition(sf::Vector2f localPos);
+    void updateHoveredKeyframe(sf::Vector2f localPos);
 
 public:
     AutomationWindow(int frames = 1000);

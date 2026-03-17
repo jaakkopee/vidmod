@@ -1,6 +1,7 @@
 #include "AutomationWindow.h"
 #include <iostream>
 #include <cmath>
+#include <algorithm>
 
 AutomationWindow::AutomationWindow(int frames) 
     : window(sf::VideoMode({800, 400}), "Parameter Automation")
@@ -172,19 +173,22 @@ void AutomationWindow::setupUI() {
     gui.add(rangeLabel);
     
     // Instructions
-    auto instructions = tgui::Label::create("Double-click to add keyframe. Drag to edit. Right-click to delete.");
+    auto instructions = tgui::Label::create("Double-click canvas to add node | Drag node to edit | Hover for preview");
     instructions->setPosition(10, 65);
-    instructions->setTextSize(12);
+    instructions->setTextSize(11);
     gui.add(instructions);
     
     // Setup canvas area (drawn manually with SFML)
     canvasPos = sf::Vector2f(10, 90);
-    canvasSize = sf::Vector2f(780, 300);
+    canvasSize = sf::Vector2f(780, 290);
     canvasBackground.setSize(canvasSize);
     canvasBackground.setPosition(canvasPos);
-    canvasBackground.setFillColor(sf::Color(40, 40, 40));
-    canvasBackground.setOutlineColor(sf::Color(100, 100, 100));
+    canvasBackground.setFillColor(sf::Color(35, 35, 40));
+    canvasBackground.setOutlineColor(sf::Color(120, 120, 140));
     canvasBackground.setOutlineThickness(2.0f);
+    
+    selectedKeyframe = -1;
+    hoveredKeyframe = -1;
 }
 
 void AutomationWindow::open(EffectChain& chain) {
@@ -237,6 +241,26 @@ void AutomationWindow::handleEvents() {
             window.close();
         }
         
+        // Track mouse position for hover effects
+        if (const auto* mouseMoved = event->getIf<sf::Event::MouseMoved>()) {
+            float mx = static_cast<float>(mouseMoved->position.x);
+            float my = static_cast<float>(mouseMoved->position.y);
+            
+            if (mx >= canvasPos.x && mx <= canvasPos.x + canvasSize.x &&
+                my >= canvasPos.y && my <= canvasPos.y + canvasSize.y) {
+                
+                sf::Vector2f localPos(mx - canvasPos.x, my - canvasPos.y);
+                updateHoveredKeyframe(localPos);
+                
+                // Continue dragging
+                if (draggingKeyframe) {
+                    handleCanvasDrag(localPos);
+                }
+            } else {
+                hoveredKeyframe = -1;
+            }
+        }
+        
         // Handle canvas interactions
         if (const auto* mousePressed = event->getIf<sf::Event::MouseButtonPressed>()) {
             float mx = static_cast<float>(mousePressed->position.x);
@@ -248,40 +272,35 @@ void AutomationWindow::handleEvents() {
                 sf::Vector2f localPos(mx - canvasPos.x, my - canvasPos.y);
                 
                 if (mousePressed->button == sf::Mouse::Button::Left) {
-                    // Check for double-click
+                    // Check for double-click (add new node)
                     static sf::Clock doubleClickClock;
                     static bool waitingForDoubleClick = false;
                     
+                    int keyframeAtPos = findKeyframeAtPosition(localPos);
+                    
                     if (waitingForDoubleClick && doubleClickClock.getElapsedTime().asMilliseconds() < 300) {
-                        // Check if double-clicking near a keyframe to delete it
-                        bool deletedKeyframe = false;
-                        if (!selectedEffect.empty() && !selectedParam.empty()) {
-                            auto& automation = effectAutomations[selectedEffect][selectedParam];
-                            auto keyframes = automation.getAllKeyframes();
-                            
-                            for (const auto& kf : keyframes) {
-                                float kfX = (kf.frame / static_cast<float>(totalFrames)) * canvasSize.x;
-                                float kfY = canvasSize.y - (kf.value * canvasSize.y);
-                                
-                                float dist = std::sqrt((localPos.x - kfX) * (localPos.x - kfX) + 
-                                                      (localPos.y - kfY) * (localPos.y - kfY));
-                                if (dist < 10.0f) {
-                                    automation.removeKeyframe(kf.frame);
-                                    deletedKeyframe = true;
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        // Only add keyframe if we didn't delete one
-                        if (!deletedKeyframe) {
-                            handleCanvasClick(localPos, true);
-                        }
+                        // Double-click - add new keyframe
+                        handleCanvasClick(localPos, true);
                         waitingForDoubleClick = false;
                     } else {
-                        handleCanvasClick(localPos, false);
+                        // Single click - select/drag existing keyframe
+                        if (keyframeAtPos >= 0) {
+                            selectedKeyframe = keyframeAtPos;
+                            draggingKeyframe = true;
+                        } else {
+                            // Click on empty canvas
+                            handleCanvasClick(localPos, false);
+                        }
+                        
                         waitingForDoubleClick = true;
                         doubleClickClock.restart();
+                    }
+                } else if (mousePressed->button == sf::Mouse::Button::Right) {
+                    // Right-click to delete node
+                    int keyframeAtPos = findKeyframeAtPosition(localPos);
+                    if (keyframeAtPos >= 0 && !selectedEffect.empty() && !selectedParam.empty()) {
+                        auto& automation = effectAutomations[selectedEffect][selectedParam];
+                        automation.removeKeyframe(keyframeAtPos);
                     }
                 }
             }
@@ -290,49 +309,30 @@ void AutomationWindow::handleEvents() {
                 draggingKeyframe = false;
                 selectedKeyframe = -1;
             }
-        } else if (const auto* mouseMoved = event->getIf<sf::Event::MouseMoved>()) {
-            if (draggingKeyframe) {
-                float mx = static_cast<float>(mouseMoved->position.x);
-                float my = static_cast<float>(mouseMoved->position.y);
-                sf::Vector2f localPos(mx - canvasPos.x, my - canvasPos.y);
-                handleCanvasDrag(localPos);
-            }
         }
     }
 }
 
 void AutomationWindow::handleCanvasClick(sf::Vector2f pos, bool doubleClick) {
     if (selectedEffect.empty() || selectedParam.empty()) {
-        std::cout << "No effect/param selected for automation" << std::endl;
         return;
     }
     
-    // Convert position to frame and value
+    if (!doubleClick) {
+        // Single click on empty space - just deselect
+        selectedKeyframe = -1;
+        return;
+    }
+    
+    // Double-click: Add new keyframe at canvas position
     int frame = static_cast<int>((pos.x / canvasSize.x) * totalFrames);
+    frame = std::max(0, std::min(frame, totalFrames - 1));
+    
     float value = 1.0f - (pos.y / canvasSize.y);
     value = std::max(0.0f, std::min(1.0f, value));
     
     auto& automation = effectAutomations[selectedEffect][selectedParam];
-    
-    if (doubleClick) {
-        // Add new keyframe
-        automation.addKeyframe(frame, value);
-        std::cout << "Added keyframe at frame " << frame << " with value " << value << std::endl;
-    } else {
-        // Check if clicking near existing keyframe to drag it
-        auto keyframes = automation.getAllKeyframes();
-        for (const auto& kf : keyframes) {
-            float kfX = (kf.frame / static_cast<float>(totalFrames)) * canvasSize.x;
-            float kfY = canvasSize.y - (kf.value * canvasSize.y);
-            
-            float dist = std::sqrt((pos.x - kfX) * (pos.x - kfX) + (pos.y - kfY) * (pos.y - kfY));
-            if (dist < 10.0f) {
-                selectedKeyframe = kf.frame;
-                draggingKeyframe = true;
-                break;
-            }
-        }
-    }
+    automation.addKeyframe(frame, value);
 }
 
 void AutomationWindow::handleCanvasDrag(sf::Vector2f pos) {
@@ -340,86 +340,256 @@ void AutomationWindow::handleCanvasDrag(sf::Vector2f pos) {
         return;
     }
     
-    // Calculate new value based on y position (don't change frame)
-    float value = 1.0f - (pos.y / canvasSize.y);
-    value = std::max(0.0f, std::min(1.0f, value));
+    // Calculate new position (frame and value)
+    int newFrame = static_cast<int>((pos.x / canvasSize.x) * totalFrames);
+    newFrame = std::max(0, std::min(newFrame, totalFrames - 1));
+    
+    float newValue = 1.0f - (pos.y / canvasSize.y);
+    newValue = std::max(0.0f, std::min(1.0f, newValue));
     
     auto& automation = effectAutomations[selectedEffect][selectedParam];
-    automation.addKeyframe(selectedKeyframe, value);
+    
+    // If frame changed, remove old keyframe and add with new frame
+    if (newFrame != selectedKeyframe) {
+        automation.removeKeyframe(selectedKeyframe);
+        automation.addKeyframe(newFrame, newValue);
+        selectedKeyframe = newFrame;
+    } else {
+        // Only value changed, update in place
+        automation.addKeyframe(selectedKeyframe, newValue);
+    }
 }
 
 void AutomationWindow::update() {
     // Update is now just for drawing, actual rendering happens in draw()
 }
 
+int AutomationWindow::findKeyframeAtPosition(sf::Vector2f localPos) {
+    if (selectedEffect.empty() || selectedParam.empty()) {
+        return -1;
+    }
+    
+    auto& automation = effectAutomations[selectedEffect][selectedParam];
+    auto keyframes = automation.getAllKeyframes();
+    
+    for (const auto& kf : keyframes) {
+        float kfX = (kf.frame / static_cast<float>(totalFrames)) * canvasSize.x;
+        float kfY = canvasSize.y - (kf.value * canvasSize.y);
+        
+        float dist = std::sqrt((localPos.x - kfX) * (localPos.x - kfX) + 
+                              (localPos.y - kfY) * (localPos.y - kfY));
+        if (dist < NODE_SNAP_DISTANCE) {
+            return kf.frame;
+        }
+    }
+    
+    return -1;
+}
+
+void AutomationWindow::updateHoveredKeyframe(sf::Vector2f localPos) {
+    hoveredKeyframe = findKeyframeAtPosition(localPos);
+}
+
 void AutomationWindow::draw() {
     if (!window.isOpen()) return;
     
-    window.clear(sf::Color(50, 50, 50));
+    window.clear(sf::Color(50, 50, 55));
     
     // Draw canvas background
     window.draw(canvasBackground);
     
-    // Draw automation curve if effect and param are selected
+    // Draw automation visualization if effect and param are selected
     if (!selectedEffect.empty() && !selectedParam.empty()) {
         auto& automation = effectAutomations[selectedEffect][selectedParam];
-        auto keyframes = automation.getAllKeyframes();
+        
+        // Draw grid and scale
+        drawGridBackground();
+        drawValueScale();
+        
+        // Draw connecting lines between nodes
+        drawConnectingLines();
+        
+        // Draw the nodes
+        drawNodes();
         
         // Update range label
         float minVal = automation.getMinValue();
         float maxVal = automation.getMaxValue();
-        rangeLabel->setText("Range: " + std::to_string(minVal) + " - " + std::to_string(maxVal));
-        
-        // Draw value labels on canvas
+        rangeLabel->setText("Range: " + std::to_string(static_cast<int>(minVal)) + " - " + std::to_string(static_cast<int>(maxVal)));
+    } else {
+        // No automation selected - show hint
         if (font.getInfo().family != "") {
-            sf::Text maxText(font, std::to_string(maxVal), 10);
-            maxText.setFillColor(sf::Color::White);
-            maxText.setPosition(sf::Vector2f(canvasPos.x + canvasSize.x + 5, canvasPos.y - 5));
-            window.draw(maxText);
-            
-            sf::Text minText(font, std::to_string(minVal), 10);
-            minText.setFillColor(sf::Color::White);
-            minText.setPosition(sf::Vector2f(canvasPos.x + canvasSize.x + 5, canvasPos.y + canvasSize.y - 15));
-            window.draw(minText);
-        }
-        
-        if (!keyframes.empty()) {
-            // Draw interpolation curve
-            sf::VertexArray curve(sf::PrimitiveType::LineStrip);
-            for (int frame = 0; frame < totalFrames; ++frame) {
-                float value = automation.getValueAtFrame(frame);
-                float x = canvasPos.x + (frame / static_cast<float>(totalFrames)) * canvasSize.x;
-                float y = canvasPos.y + canvasSize.y - (value * canvasSize.y);
-                
-                sf::Vertex vert;
-                vert.position = sf::Vector2f(x, y);
-                vert.color = sf::Color::Green;
-                curve.append(vert);
-            }
-            window.draw(curve);
-            
-            // Draw keyframe markers
-            for (const auto& kf : keyframes) {
-                float x = canvasPos.x + (kf.frame / static_cast<float>(totalFrames)) * canvasSize.x;
-                float y = canvasPos.y + canvasSize.y - (kf.value * canvasSize.y);
-                
-                // Vertical line
-                sf::VertexArray line(sf::PrimitiveType::Lines, 2);
-                line[0].position = sf::Vector2f(x, canvasPos.y);
-                line[0].color = sf::Color::Red;
-                line[1].position = sf::Vector2f(x, canvasPos.y + canvasSize.y);
-                line[1].color = sf::Color::Red;
-                window.draw(line);
-                
-                // Control point
-                sf::CircleShape point(5.0f);
-                point.setPosition(sf::Vector2f(x - 5.0f, y - 5.0f));
-                point.setFillColor(sf::Color::Yellow);
-                window.draw(point);
-            }
+            sf::Text hint(font, "Select an effect and parameter", 14);
+            hint.setFillColor(sf::Color(150, 150, 150));
+            hint.setPosition(sf::Vector2f(canvasPos.x + canvasSize.x / 2 - 80, canvasPos.y + canvasSize.y / 2 - 10));
+            window.draw(hint);
         }
     }
     
     gui.draw();
     window.display();
+}
+
+void AutomationWindow::drawGridBackground() {
+    // Draw horizontal grid lines (value divisions)
+    const int gridDivisions = 4;
+    for (int i = 0; i <= gridDivisions; ++i) {
+        float y = canvasPos.y + (canvasSize.y / gridDivisions) * i;
+        
+        sf::VertexArray gridLine(sf::PrimitiveType::Lines, 2);
+        gridLine[0].position = sf::Vector2f(canvasPos.x, y);
+        gridLine[0].color = sf::Color(80, 80, 90);
+        gridLine[1].position = sf::Vector2f(canvasPos.x + canvasSize.x, y);
+        gridLine[1].color = sf::Color(80, 80, 90);
+        window.draw(gridLine);
+    }
+    
+    // Draw vertical grid lines (time divisions)
+    const int timeGridDivisions = 10;
+    for (int i = 0; i <= timeGridDivisions; ++i) {
+        float x = canvasPos.x + (canvasSize.x / timeGridDivisions) * i;
+        
+        sf::VertexArray gridLine(sf::PrimitiveType::Lines, 2);
+        gridLine[0].position = sf::Vector2f(x, canvasPos.y);
+        gridLine[0].color = sf::Color(70, 70, 80);
+        gridLine[1].position = sf::Vector2f(x, canvasPos.y + canvasSize.y);
+        gridLine[1].color = sf::Color(70, 70, 80);
+        window.draw(gridLine);
+    }
+}
+
+void AutomationWindow::drawValueScale() {
+    if (font.getInfo().family == "") return;
+    
+    if (selectedEffect.empty() || selectedParam.empty()) return;
+    
+    auto& automation = effectAutomations[selectedEffect][selectedParam];
+    float minVal = automation.getMinValue();
+    float maxVal = automation.getMaxValue();
+    
+    // Draw max value label
+    sf::Text maxText(font, std::to_string(static_cast<int>(maxVal)), 10);
+    maxText.setFillColor(sf::Color(180, 200, 200));
+    maxText.setPosition(sf::Vector2f(canvasPos.x + canvasSize.x + 8, canvasPos.y - 8));
+    window.draw(maxText);
+    
+    // Draw mid value label
+    float midVal = (minVal + maxVal) / 2.0f;
+    sf::Text midText(font, std::to_string(static_cast<int>(midVal)), 10);
+    midText.setFillColor(sf::Color(160, 180, 180));
+    midText.setPosition(sf::Vector2f(canvasPos.x + canvasSize.x + 8, canvasPos.y + canvasSize.y / 2 - 5));
+    window.draw(midText);
+    
+    // Draw min value label
+    sf::Text minText(font, std::to_string(static_cast<int>(minVal)), 10);
+    minText.setFillColor(sf::Color(140, 160, 160));
+    minText.setPosition(sf::Vector2f(canvasPos.x + canvasSize.x + 8, canvasPos.y + canvasSize.y - 12));
+    window.draw(minText);
+    
+    // Draw frame scale labels at canvas bottom
+    const int frameMarkers = 5;
+    for (int i = 0; i <= frameMarkers; ++i) {
+        float x = canvasPos.x + (canvasSize.x / frameMarkers) * i;
+        int frame = static_cast<int>((i / static_cast<float>(frameMarkers)) * totalFrames);
+        
+        sf::Text frameText(font, std::to_string(frame), 9);
+        frameText.setFillColor(sf::Color(140, 160, 160));
+        frameText.setPosition(sf::Vector2f(x - 10, canvasPos.y + canvasSize.y + 3));
+        window.draw(frameText);
+    }
+}
+
+void AutomationWindow::drawConnectingLines() {
+    if (selectedEffect.empty() || selectedParam.empty()) return;
+    
+    auto& automation = effectAutomations[selectedEffect][selectedParam];
+    auto keyframes = automation.getAllKeyframes();
+    
+    if (keyframes.size() < 2) return;
+    
+    // Sort keyframes by frame
+    std::sort(keyframes.begin(), keyframes.end(), 
+        [](const Keyframe& a, const Keyframe& b) { return a.frame < b.frame; });
+    
+    // Draw lines between consecutive keyframes
+    sf::VertexArray lines(sf::PrimitiveType::Lines);
+    
+    for (size_t i = 0; i < keyframes.size() - 1; ++i) {
+        const auto& kf1 = keyframes[i];
+        const auto& kf2 = keyframes[i + 1];
+        
+        float x1 = canvasPos.x + (kf1.frame / static_cast<float>(totalFrames)) * canvasSize.x;
+        float y1 = canvasPos.y + canvasSize.y - (kf1.value * canvasSize.y);
+        
+        float x2 = canvasPos.x + (kf2.frame / static_cast<float>(totalFrames)) * canvasSize.x;
+        float y2 = canvasPos.y + canvasSize.y - (kf2.value * canvasSize.y);
+        
+        sf::Vertex v1;
+        v1.position = sf::Vector2f(x1, y1);
+        v1.color = sf::Color(100, 180, 255);
+        lines.append(v1);
+        
+        sf::Vertex v2;
+        v2.position = sf::Vector2f(x2, y2);
+        v2.color = sf::Color(100, 180, 255);
+        lines.append(v2);
+    }
+    
+    window.draw(lines);
+}
+
+void AutomationWindow::drawNodes() {
+    if (selectedEffect.empty() || selectedParam.empty()) return;
+    
+    auto& automation = effectAutomations[selectedEffect][selectedParam];
+    auto keyframes = automation.getAllKeyframes();
+    
+    for (const auto& kf : keyframes) {
+        float x = canvasPos.x + (kf.frame / static_cast<float>(totalFrames)) * canvasSize.x;
+        float y = canvasPos.y + canvasSize.y - (kf.value * canvasSize.y);
+        
+        // Determine node appearance based on state
+        bool isSelected = (kf.frame == selectedKeyframe && draggingKeyframe);
+        bool isHovered = (kf.frame == hoveredKeyframe);
+        
+        float radius = NODE_RADIUS;
+        sf::Color fillColor = sf::Color(100, 200, 100);  // Default: green
+        sf::Color outlineColor = sf::Color(150, 255, 150);
+        float outlineWidth = 1.5f;
+        
+        if (isSelected) {
+            // Selected node: larger, bright yellow with thick outline
+            radius = NODE_HOVER_RADIUS + 2.0f;
+            fillColor = sf::Color(255, 255, 100);
+            outlineColor = sf::Color(255, 255, 200);
+            outlineWidth = 2.5f;
+        } else if (isHovered) {
+            // Hovered node: slightly larger, bright cyan
+            radius = NODE_HOVER_RADIUS;
+            fillColor = sf::Color(100, 255, 255);
+            outlineColor = sf::Color(150, 255, 255);
+            outlineWidth = 2.0f;
+        }
+        
+        // Draw node circle
+        sf::CircleShape node(radius);
+        node.setPosition(sf::Vector2f(x - radius, y - radius));
+        node.setFillColor(fillColor);
+        node.setOutlineColor(outlineColor);
+        node.setOutlineThickness(outlineWidth);
+        window.draw(node);
+        
+        // Draw value label above node (only if selected or hovered)
+        if (isSelected || isHovered) {
+            if (font.getInfo().family != "") {
+                auto& automation_ref = effectAutomations[selectedEffect][selectedParam];
+                float actualValue = automation_ref.getActualValueAtFrame(kf.frame);
+                
+                sf::Text valueLabel(font, std::to_string(static_cast<int>(actualValue)), 9);
+                valueLabel.setFillColor(sf::Color::White);
+                valueLabel.setPosition(sf::Vector2f(x - 15, y - radius - 20));
+                window.draw(valueLabel);
+            }
+        }
+    }
 }
