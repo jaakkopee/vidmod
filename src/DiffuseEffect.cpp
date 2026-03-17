@@ -4,18 +4,21 @@
 DiffuseEffect::DiffuseEffect() : Effect("Diffuse") {
     setParameter("diffuse_coeff", 0.1f);
     setParameter("iterations", 1.0f);
+    setParameter("audio_gain", 1.0f);
 }
 
 cv::Mat DiffuseEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float videoFps) {
     float diffuseCoeff = getParameter("diffuse_coeff", 0.1f);
     int iterations = static_cast<int>(getParameter("iterations", 1.0f));
+    float audioGain = getParameter("audio_gain", 1.0f);
     
     // Modulate with audio RMS if available
     if (audioBuffer) {
         int audioFramesPerVideoFrame = static_cast<int>(audioBuffer->getSampleRate() / videoFps);
         std::vector<float> audioSamples = audioBuffer->getBuffer(audioFramesPerVideoFrame);
         float rms = audioBuffer->getRMS(audioSamples);
-        diffuseCoeff *= rms;
+        float audioScale = (1.0f - audioGain) + (audioGain * rms);
+        diffuseCoeff *= audioScale;
     }
     
     cv::Mat newFrame;

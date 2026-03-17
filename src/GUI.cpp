@@ -8,6 +8,16 @@
 #include <cstring>  // for strerror
 #include <cerrno>   // for errno
 
+namespace {
+std::vector<std::string> withAudioGainParam(const std::vector<std::string>& paramNames) {
+    std::vector<std::string> names = paramNames;
+    if (std::find(names.begin(), names.end(), "audio_gain") == names.end()) {
+        names.push_back("audio_gain");
+    }
+    return names;
+}
+}
+
 GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), showingPreview(false), isProcessing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), currentDisplayFrame(0) {
     automationWindow = std::make_unique<AutomationWindow>(1000);
     setupUI();
@@ -390,7 +400,7 @@ void GUI::updateParameterPanel() {
     if (!effect) return;
     
     float yPos = 10.0f;
-    const auto& paramNames = effect->getParameterNames();
+    const auto paramNames = withAudioGainParam(effect->getParameterNames());
     
     for (const auto& paramName : paramNames) {
         auto label = tgui::Label::create(paramName + ":");
@@ -1689,7 +1699,7 @@ void GUI::updateParameterDisplayValues() {
     if (!effect) return;
     
     // Update edit boxes with current (possibly automated) values
-    const auto& paramNames = effect->getParameterNames();
+    const auto paramNames = withAudioGainParam(effect->getParameterNames());
     auto widgets = paramPanel->getWidgets();
     
     int editBoxIndex = 0;

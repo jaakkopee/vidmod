@@ -12,6 +12,6 @@ public:
     cv::Mat apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float videoFps) override;
     
     std::vector<std::string> getParameterNames() const override {
-        return {"light_coeff"};
+        return {"light_coeff", "audio_gain"};
     }
 };

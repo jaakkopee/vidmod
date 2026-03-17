@@ -92,6 +92,32 @@ This document describes some example effect chains you can create in the applica
 
 ## Parameter Guidelines
 
+## Audio Gain Guidelines
+
+`audio_gain` is now available on all effects and controls how strongly audio affects processing coefficients.
+
+- `audio_gain = 0.0`: disable audio influence (effect uses only its base parameters)
+- `audio_gain = 1.0`: default behavior
+- `audio_gain > 1.0`: exaggerated audio reaction (can become unstable/noisy)
+
+Recommended starting ranges:
+
+- FFT: `0.3 - 1.2`
+- Shadow: `0.2 - 1.0`
+- Light: `0.2 - 1.0`
+- Diffuse: `0.2 - 0.9`
+- AudioColor: `0.4 - 1.5`
+- Fractal: `0.2 - 1.0`
+- NeuralTile: `0.3 - 1.2`
+- NeuralCircle: `0.3 - 1.2`
+
+Quick tuning workflow:
+
+1. Set your main effect parameters first (coefficients, iterations, etc.).
+2. Start with `audio_gain = 0.5`.
+3. Increase in small steps (`+0.1`) until beat response is visible.
+4. If visuals flicker too hard, reduce `audio_gain` before lowering other parameters.
+
 ### Conservative (Subtle Effects)
 - Coefficients: 0.05 - 0.15
 - Iterations: 1

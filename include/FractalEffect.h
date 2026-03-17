@@ -10,7 +10,7 @@ public:
     cv::Mat apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float videoFps) override;
     
     std::vector<std::string> getParameterNames() const override {
-        return {"zoom", "max_iter", "audio_depth", "cx", "cy", "blend"};
+        return {"zoom", "max_iter", "audio_depth", "cx", "cy", "blend", "audio_gain"};
     }
 
 private:

@@ -3,6 +3,7 @@
 
 LightEffect::LightEffect() : Effect("Light") {
     setParameter("light_coeff", 0.1f);
+    setParameter("audio_gain", 1.0f);
 }
 
 cv::Mat LightEffect::findLocalMaxima(const cv::Mat& frame, int x, int y) {
@@ -15,13 +16,15 @@ cv::Mat LightEffect::findLocalMaxima(const cv::Mat& frame, int x, int y) {
 
 cv::Mat LightEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float videoFps) {
     float lightCoeff = getParameter("light_coeff", 0.1f);
+    float audioGain = getParameter("audio_gain", 1.0f);
     
     // Modulate with audio RMS if available
     if (audioBuffer) {
         int audioFramesPerVideoFrame = static_cast<int>(audioBuffer->getSampleRate() / videoFps);
         std::vector<float> audioSamples = audioBuffer->getBuffer(audioFramesPerVideoFrame);
         float rms = audioBuffer->getRMS(audioSamples);
-        lightCoeff *= rms;
+        float audioScale = (1.0f - audioGain) + (audioGain * rms);
+        lightCoeff *= audioScale;
     }
     
     // Use morphological dilation to find local maxima (much faster than pixel loops)

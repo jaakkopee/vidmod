@@ -5,6 +5,7 @@
 AudioColorEffect::AudioColorEffect() : Effect("AudioColor") {
     setParameter("color_coeff", 1.0f);
     setParameter("mode", 0.0f); // 0=RGB, 1=HSV dominant, 2=HSV spectrum
+    setParameter("audio_gain", 1.0f);
 }
 
 cv::Mat AudioColorEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float videoFps) {
@@ -16,6 +17,8 @@ cv::Mat AudioColorEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, 
     float rms = audioBuffer->getRMS(audioSamples);
     float colorCoeff = getParameter("color_coeff", 1.0f);
     int mode = static_cast<int>(getParameter("mode", 0.0f));
+    float audioGain = getParameter("audio_gain", 1.0f);
+    float scaledRms = rms * audioGain;
     
     // Get FFT of audio split into 8 bands
     std::vector<std::vector<float>> bands;
@@ -45,9 +48,9 @@ cv::Mat AudioColorEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, 
         }
         
         // Map bands to hue (0-180 in OpenCV HSV)
-        float hueShift = (dominantBand / 8.0f) * 180.0f * colorCoeff;
-        float saturationMod = 1.0f + (rms * colorCoeff * 2.0f);
-        float valueMod = 1.0f + (rms * colorCoeff);
+        float hueShift = (dominantBand / 8.0f) * 180.0f * colorCoeff * audioGain;
+        float saturationMod = 1.0f + (scaledRms * colorCoeff * 2.0f);
+        float valueMod = 1.0f + (scaledRms * colorCoeff);
         
         // Process in-place for better cache performance
         hsvFrame.convertTo(hsvFrame, CV_32FC3);
@@ -90,16 +93,16 @@ cv::Mat AudioColorEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, 
             weightedHue /= totalWeight;
         }
         
-        float saturationMod = 1.0f + (rms * colorCoeff * 3.0f);
+        float saturationMod = 1.0f + (scaledRms * colorCoeff * 3.0f);
         float peakEnergy = *std::max_element(bandAvgs.begin(), bandAvgs.end());
-        float valueMod = 1.0f + (peakEnergy * colorCoeff * 2.0f);
+        float valueMod = 1.0f + (peakEnergy * colorCoeff * 2.0f * audioGain);
         
         // Process in-place
         hsvFrame.convertTo(hsvFrame, CV_32FC3);
         std::vector<cv::Mat> hsvChannels;
         cv::split(hsvFrame, hsvChannels);
         
-        hsvChannels[0] += weightedHue * colorCoeff;
+        hsvChannels[0] += weightedHue * colorCoeff * audioGain;
         hsvChannels[1] *= saturationMod;
         hsvChannels[2] *= valueMod;
         
@@ -124,6 +127,9 @@ cv::Mat AudioColorEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, 
         float redEnergy = (bandAvgs[0] + bandAvgs[1] + bandAvgs[2]) / 3.0f;
         float greenEnergy = (bandAvgs[3] + bandAvgs[4] + bandAvgs[5]) / 3.0f;
         float blueEnergy = (bandAvgs[6] + bandAvgs[7]) / 2.0f;
+        redEnergy *= audioGain;
+        greenEnergy *= audioGain;
+        blueEnergy *= audioGain;
         
         // Apply audio reactive color modulation (BGR order in OpenCV)
         float blueMod = 1.0f + (blueEnergy * colorCoeff);

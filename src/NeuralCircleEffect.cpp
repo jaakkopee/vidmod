@@ -10,6 +10,7 @@ NeuralCircleEffect::NeuralCircleEffect() : Effect("NeuralCircle") {
     parameters["movement"] = 0.3f;       // How much circles move based on activation
     parameters["audioMod"] = 0.5f;       // Audio modulation strength
     parameters["feedback"] = 0.0f;       // Feedback from previous frame
+    parameters["audio_gain"] = 1.0f;     // Scales how strongly audio affects circle coefficients
     gridWidth = 0;
     gridHeight = 0;
 }
@@ -130,13 +131,14 @@ cv::Mat NeuralCircleEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer
     int iterations = static_cast<int>(parameters["iterations"]);
     float movement = parameters["movement"];
     float audioMod = parameters["audioMod"];
+    float audioGain = parameters["audio_gain"];
     
     // Get audio influence
     float audioInfluence = 0.0f;
     if (audioBuffer) {
         int chunkSize = static_cast<int>(audioBuffer->getSampleRate() / fps);
         std::vector<float> audioChunk = audioBuffer->getBuffer(chunkSize);
-        audioInfluence = audioBuffer->getRMS(audioChunk) * audioMod;
+        audioInfluence = audioBuffer->getRMS(audioChunk) * audioMod * audioGain;
     }
     
     // Initialize neuron grid

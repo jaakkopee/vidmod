@@ -10,6 +10,7 @@ FFTEffect::FFTEffect() : Effect("FFT") {
     setParameter("red_bias", 64.0f);
     setParameter("green_bias", 64.0f);
     setParameter("blue_bias", 64.0f);
+    setParameter("audio_gain", 1.0f);
 }
 
 cv::Mat FFTEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float videoFps) {
@@ -54,6 +55,11 @@ cv::Mat FFTEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float v
     float fft_r = getParameter("fft_r_coeff", 1.0f);
     float fft_g = getParameter("fft_g_coeff", 1.0f);
     float fft_b = getParameter("fft_b_coeff", 1.0f);
+    float audioGain = getParameter("audio_gain", 1.0f);
+
+    bassAvg *= audioGain;
+    midAvg *= audioGain;
+    trebleAvg *= audioGain;
     
     // Massive scaling factor to make very small FFT values visible
     // FFT values are typically in range 1e-6 to 1e-3, so we need ~1e6 multiplier

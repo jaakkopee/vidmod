@@ -3,6 +3,7 @@
 
 ShadowEffect::ShadowEffect() : Effect("Shadow") {
     setParameter("shadow_coeff", 0.1f);
+    setParameter("audio_gain", 1.0f);
 }
 
 cv::Mat ShadowEffect::findLocalMinima(const cv::Mat& frame, int x, int y) {
@@ -15,13 +16,15 @@ cv::Mat ShadowEffect::findLocalMinima(const cv::Mat& frame, int x, int y) {
 
 cv::Mat ShadowEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float videoFps) {
     float shadowCoeff = getParameter("shadow_coeff", 0.1f);
+    float audioGain = getParameter("audio_gain", 1.0f);
     
     // Modulate with audio RMS if available
     if (audioBuffer) {
         int audioFramesPerVideoFrame = static_cast<int>(audioBuffer->getSampleRate() / videoFps);
         std::vector<float> audioSamples = audioBuffer->getBuffer(audioFramesPerVideoFrame);
         float rms = audioBuffer->getRMS(audioSamples);
-        shadowCoeff *= rms;
+        float audioScale = (1.0f - audioGain) + (audioGain * rms);
+        shadowCoeff *= audioScale;
     }
     
     // Use morphological erosion to find local minima (much faster than pixel loops)

@@ -9,6 +9,7 @@ FractalEffect::FractalEffect() : Effect("Fractal") {
     setParameter("cx", -0.4f);            // Julia set constant real part
     setParameter("cy", 0.6f);             // Julia set constant imaginary part
     setParameter("blend", 0.5f);          // Blend original image with fractal
+    setParameter("audio_gain", 1.0f);     // Scales audio influence on fractal modulation
 }
 
 int FractalEffect::juliaIteration(double x, double y, double cReal, double cImag, int maxIter) {
@@ -34,6 +35,7 @@ cv::Mat FractalEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, flo
     float cx = getParameter("cx", -0.4f);
     float cy = getParameter("cy", 0.6f);
     float blendAmount = getParameter("blend", 0.5f);
+    float audioGain = getParameter("audio_gain", 1.0f);
     
     int maxIter = static_cast<int>(baseMaxIter);
     double cReal = cx;
@@ -61,22 +63,22 @@ cv::Mat FractalEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, flo
         
         // Low frequencies control iteration depth (more bass = deeper fractals)
         float bassEnergy = (bandAvgs[0] + bandAvgs[1] + bandAvgs[2]) / 3.0f;
-        maxIter += static_cast<int>(bassEnergy * audioDepthMult);
+        maxIter += static_cast<int>(bassEnergy * audioDepthMult * audioGain);
         
         // Mid frequencies rotate the Julia constant around origin
         float midEnergy = (bandAvgs[3] + bandAvgs[4]) / 2.0f;
-        double angle = midEnergy * 6.28318530718; // 0 to 2π
+        double angle = midEnergy * 6.28318530718 * audioGain; // 0 to 2π
         double magnitude = std::sqrt(cReal * cReal + cImag * cImag);
         cReal = magnitude * std::cos(angle);
         cImag = magnitude * std::sin(angle);
         
         // High frequencies modulate zoom
         float trebleEnergy = (bandAvgs[6] + bandAvgs[7]) / 2.0f;
-        zoom *= (1.0f + trebleEnergy * 2.0f);
+        zoom *= (1.0f + trebleEnergy * 2.0f * audioGain);
         
         // Overall RMS affects blend amount
         float rms = audioBuffer->getRMS(audioSamples);
-        blendAmount = std::min(1.0f, blendAmount + rms * 0.5f);
+        blendAmount = std::min(1.0f, blendAmount + rms * 0.5f * audioGain);
     }
     
     // Clamp values

@@ -5,6 +5,16 @@
 #include <cmath>
 #include <algorithm>
 
+namespace {
+std::vector<std::string> withAudioGainParam(const std::vector<std::string>& paramNames) {
+    std::vector<std::string> names = paramNames;
+    if (std::find(names.begin(), names.end(), "audio_gain") == names.end()) {
+        names.push_back("audio_gain");
+    }
+    return names;
+}
+}
+
 static std::string formatFloat(float val) {
     std::ostringstream oss;
     float absVal = std::abs(val);
@@ -227,7 +237,7 @@ void AutomationWindow::updateParamList() {
     // Find the selected effect and get its parameters
     const auto& effects = effectChainRef->getEffects();
     if (selectedEffectIndex < static_cast<int>(effects.size())) {
-        const auto& paramNames = effects[selectedEffectIndex]->getParameterNames();
+        const auto paramNames = withAudioGainParam(effects[selectedEffectIndex]->getParameterNames());
         for (const auto& paramName : paramNames) {
             paramComboBox->addItem(paramName);
         }

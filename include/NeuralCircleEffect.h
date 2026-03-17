@@ -27,6 +27,6 @@ public:
     cv::Mat apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float fps) override;
     
     std::vector<std::string> getParameterNames() const override {
-        return {"circleSize", "threshold", "mode", "iterations", "movement", "audioMod", "feedback"};
+        return {"circleSize", "threshold", "mode", "iterations", "movement", "audioMod", "feedback", "audio_gain"};
     }
 };
