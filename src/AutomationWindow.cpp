@@ -28,17 +28,17 @@ AutomationWindow::~AutomationWindow() {
 
 void AutomationWindow::setupUI() {
     // Effect selector
-    auto effectLabel = tgui::Label::create("Effect:");
+    auto effectLabel = tgui::Label::create("Effect Instance:");
     effectLabel->setPosition(10, 10);
     effectLabel->setTextSize(14);
     gui.add(effectLabel);
     
     effectComboBox = tgui::ComboBox::create();
-    effectComboBox->setPosition(70, 10);
+    effectComboBox->setPosition(130, 10);
     effectComboBox->setSize(200, 25);
-    effectComboBox->onItemSelect([this](int) {
-        if (effectComboBox->getSelectedItemIndex() >= 0) {
-            selectedEffect = effectComboBox->getSelectedItem().toStdString();
+    effectComboBox->onItemSelect([this](int index) {
+        if (index >= 0) {
+            selectedEffectIndex = index;
             updateParamList();
         }
     });
@@ -46,26 +46,23 @@ void AutomationWindow::setupUI() {
     
     // Parameter selector
     auto paramLabel = tgui::Label::create("Parameter:");
-    paramLabel->setPosition(290, 10);
+    paramLabel->setPosition(350, 10);
     paramLabel->setTextSize(14);
     gui.add(paramLabel);
     
     paramComboBox = tgui::ComboBox::create();
-    paramComboBox->setPosition(380, 10);
-    paramComboBox->setSize(200, 25);
+    paramComboBox->setPosition(440, 10);
+    paramComboBox->setSize(160, 25);
     paramComboBox->onItemSelect([this](int) {
-        if (paramComboBox->getSelectedItemIndex() >= 0) {
+        if (paramComboBox->getSelectedItemIndex() >= 0 && selectedEffectIndex >= 0) {
             selectedParam = paramComboBox->getSelectedItem().toStdString();
             
             // Get current parameter value
             float currentValue = 1.0f;
-            if (effectChainRef && !selectedEffect.empty()) {
+            if (effectChainRef) {
                 const auto& effects = effectChainRef->getEffects();
-                for (const auto& effect : effects) {
-                    if (effect->getName() == selectedEffect) {
-                        currentValue = effect->getParameter(selectedParam);
-                        break;
-                    }
+                if (selectedEffectIndex < static_cast<int>(effects.size())) {
+                    currentValue = effects[selectedEffectIndex]->getParameter(selectedParam);
                 }
             }
             
@@ -88,13 +85,13 @@ void AutomationWindow::setupUI() {
             float maxVal = currentValue * multiplier;
             
             // Initialize automation with calculated range if not exists
-            if (!selectedEffect.empty() && effectAutomations[selectedEffect].count(selectedParam) == 0) {
-                effectAutomations[selectedEffect][selectedParam] = ParameterAutomation(minVal, maxVal);
+            if (selectedEffectIndex >= 0 && effectAutomations[selectedEffectIndex].count(selectedParam) == 0) {
+                effectAutomations[selectedEffectIndex][selectedParam] = ParameterAutomation(minVal, maxVal);
             }
             
             // Update range label to show current automation range
-            if (!selectedEffect.empty() && effectAutomations[selectedEffect].count(selectedParam) > 0) {
-                auto& automation = effectAutomations[selectedEffect][selectedParam];
+            if (selectedEffectIndex >= 0 && effectAutomations[selectedEffectIndex].count(selectedParam) > 0) {
+                auto& automation = effectAutomations[selectedEffectIndex][selectedParam];
                 rangeLabel->setText("Range: " + tgui::String(automation.getMinValue()) + " - " + tgui::String(automation.getMaxValue()));
             }
         }
@@ -103,13 +100,13 @@ void AutomationWindow::setupUI() {
     
     // Range selector
     auto rangeLabel2 = tgui::Label::create("Range:");
-    rangeLabel2->setPosition(600, 10);
+    rangeLabel2->setPosition(620, 10);
     rangeLabel2->setTextSize(14);
     gui.add(rangeLabel2);
     
     rangeComboBox = tgui::ComboBox::create();
-    rangeComboBox->setPosition(660, 10);
-    rangeComboBox->setSize(120, 25);
+    rangeComboBox->setPosition(680, 10);
+    rangeComboBox->setSize(100, 25);
     rangeComboBox->addItem("/10000");
     rangeComboBox->addItem("/1000");
     rangeComboBox->addItem("/100");
@@ -123,13 +120,10 @@ void AutomationWindow::setupUI() {
     rangeComboBox->onItemSelect([this](int index) {
         // Get current parameter value if parameter is selected
         float currentValue = 1.0f;
-        if (effectChainRef && !selectedEffect.empty() && !selectedParam.empty()) {
+        if (effectChainRef && selectedEffectIndex >= 0 && !selectedParam.empty()) {
             const auto& effects = effectChainRef->getEffects();
-            for (const auto& effect : effects) {
-                if (effect->getName() == selectedEffect) {
-                    currentValue = effect->getParameter(selectedParam);
-                    break;
-                }
+            if (selectedEffectIndex < static_cast<int>(effects.size())) {
+                currentValue = effects[selectedEffectIndex]->getParameter(selectedParam);
             }
         }
         
@@ -154,13 +148,13 @@ void AutomationWindow::setupUI() {
         rangeLabel->setText("Range: " + tgui::String(minVal) + " - " + tgui::String(maxVal));
         
         // Update automation range if parameter is selected
-        if (!selectedEffect.empty() && !selectedParam.empty()) {
+        if (selectedEffectIndex >= 0 && !selectedParam.empty()) {
             // If automation exists, update its range (preserving keyframes)
-            if (effectAutomations[selectedEffect].count(selectedParam) > 0) {
-                effectAutomations[selectedEffect][selectedParam].setRange(minVal, maxVal);
+            if (effectAutomations[selectedEffectIndex].count(selectedParam) > 0) {
+                effectAutomations[selectedEffectIndex][selectedParam].setRange(minVal, maxVal);
             } else {
                 // Create new automation with this range
-                effectAutomations[selectedEffect][selectedParam] = ParameterAutomation(minVal, maxVal);
+                effectAutomations[selectedEffectIndex][selectedParam] = ParameterAutomation(minVal, maxVal);
             }
         }
     });
@@ -189,6 +183,7 @@ void AutomationWindow::setupUI() {
     
     selectedKeyframe = -1;
     hoveredKeyframe = -1;
+    selectedEffectIndex = -1;
 }
 
 void AutomationWindow::open(EffectChain& chain) {
@@ -198,14 +193,15 @@ void AutomationWindow::open(EffectChain& chain) {
     
     effectChainRef = &chain;
     
-    // Populate effect list
+    // Populate effect list with indices
     effectComboBox->removeAllItems();
     const auto& effects = chain.getEffects();
-    for (const auto& effect : effects) {
-        effectComboBox->addItem(effect->getName());
+    for (int i = 0; i < static_cast<int>(effects.size()); ++i) {
+        std::string label = "[" + std::to_string(i) + "] " + effects[i]->getName();
+        effectComboBox->addItem(label);
     }
     
-    selectedEffect = "";
+    selectedEffectIndex = -1;
     selectedParam = "";
     paramComboBox->removeAllItems();
 }
@@ -214,19 +210,16 @@ void AutomationWindow::updateParamList() {
     paramComboBox->removeAllItems();
     selectedParam = "";
     
-    if (!effectChainRef || selectedEffect.empty()) {
+    if (!effectChainRef || selectedEffectIndex < 0) {
         return;
     }
     
     // Find the selected effect and get its parameters
     const auto& effects = effectChainRef->getEffects();
-    for (const auto& effect : effects) {
-        if (effect->getName() == selectedEffect) {
-            const auto& paramNames = effect->getParameterNames();
-            for (const auto& paramName : paramNames) {
-                paramComboBox->addItem(paramName);
-            }
-            break;
+    if (selectedEffectIndex < static_cast<int>(effects.size())) {
+        const auto& paramNames = effects[selectedEffectIndex]->getParameterNames();
+        for (const auto& paramName : paramNames) {
+            paramComboBox->addItem(paramName);
         }
     }
 }
@@ -298,8 +291,8 @@ void AutomationWindow::handleEvents() {
                 } else if (mousePressed->button == sf::Mouse::Button::Right) {
                     // Right-click to delete node
                     int keyframeAtPos = findKeyframeAtPosition(localPos);
-                    if (keyframeAtPos >= 0 && !selectedEffect.empty() && !selectedParam.empty()) {
-                        auto& automation = effectAutomations[selectedEffect][selectedParam];
+                    if (keyframeAtPos >= 0 && selectedEffectIndex >= 0 && !selectedParam.empty()) {
+                        auto& automation = effectAutomations[selectedEffectIndex][selectedParam];
                         automation.removeKeyframe(keyframeAtPos);
                     }
                 }
@@ -314,7 +307,7 @@ void AutomationWindow::handleEvents() {
 }
 
 void AutomationWindow::handleCanvasClick(sf::Vector2f pos, bool doubleClick) {
-    if (selectedEffect.empty() || selectedParam.empty()) {
+    if (selectedEffectIndex < 0 || selectedParam.empty()) {
         return;
     }
     
@@ -331,12 +324,12 @@ void AutomationWindow::handleCanvasClick(sf::Vector2f pos, bool doubleClick) {
     float value = 1.0f - (pos.y / canvasSize.y);
     value = std::max(0.0f, std::min(1.0f, value));
     
-    auto& automation = effectAutomations[selectedEffect][selectedParam];
+    auto& automation = effectAutomations[selectedEffectIndex][selectedParam];
     automation.addKeyframe(frame, value);
 }
 
 void AutomationWindow::handleCanvasDrag(sf::Vector2f pos) {
-    if (selectedKeyframe < 0 || selectedEffect.empty() || selectedParam.empty()) {
+    if (selectedKeyframe < 0 || selectedEffectIndex < 0 || selectedParam.empty()) {
         return;
     }
     
@@ -347,7 +340,7 @@ void AutomationWindow::handleCanvasDrag(sf::Vector2f pos) {
     float newValue = 1.0f - (pos.y / canvasSize.y);
     newValue = std::max(0.0f, std::min(1.0f, newValue));
     
-    auto& automation = effectAutomations[selectedEffect][selectedParam];
+    auto& automation = effectAutomations[selectedEffectIndex][selectedParam];
     
     // If frame changed, remove old keyframe and add with new frame
     if (newFrame != selectedKeyframe) {
@@ -365,11 +358,11 @@ void AutomationWindow::update() {
 }
 
 int AutomationWindow::findKeyframeAtPosition(sf::Vector2f localPos) {
-    if (selectedEffect.empty() || selectedParam.empty()) {
+    if (selectedEffectIndex < 0 || selectedParam.empty()) {
         return -1;
     }
     
-    auto& automation = effectAutomations[selectedEffect][selectedParam];
+    auto& automation = effectAutomations[selectedEffectIndex][selectedParam];
     auto keyframes = automation.getAllKeyframes();
     
     for (const auto& kf : keyframes) {
@@ -399,8 +392,8 @@ void AutomationWindow::draw() {
     window.draw(canvasBackground);
     
     // Draw automation visualization if effect and param are selected
-    if (!selectedEffect.empty() && !selectedParam.empty()) {
-        auto& automation = effectAutomations[selectedEffect][selectedParam];
+    if (selectedEffectIndex >= 0 && !selectedParam.empty()) {
+        auto& automation = effectAutomations[selectedEffectIndex][selectedParam];
         
         // Draw grid and scale
         drawGridBackground();
@@ -461,9 +454,9 @@ void AutomationWindow::drawGridBackground() {
 void AutomationWindow::drawValueScale() {
     if (font.getInfo().family == "") return;
     
-    if (selectedEffect.empty() || selectedParam.empty()) return;
+    if (selectedEffectIndex < 0 || selectedParam.empty()) return;
     
-    auto& automation = effectAutomations[selectedEffect][selectedParam];
+    auto& automation = effectAutomations[selectedEffectIndex][selectedParam];
     float minVal = automation.getMinValue();
     float maxVal = automation.getMaxValue();
     
@@ -500,9 +493,9 @@ void AutomationWindow::drawValueScale() {
 }
 
 void AutomationWindow::drawConnectingLines() {
-    if (selectedEffect.empty() || selectedParam.empty()) return;
+    if (selectedEffectIndex < 0 || selectedParam.empty()) return;
     
-    auto& automation = effectAutomations[selectedEffect][selectedParam];
+    auto& automation = effectAutomations[selectedEffectIndex][selectedParam];
     auto keyframes = automation.getAllKeyframes();
     
     if (keyframes.size() < 2) return;
@@ -539,9 +532,9 @@ void AutomationWindow::drawConnectingLines() {
 }
 
 void AutomationWindow::drawNodes() {
-    if (selectedEffect.empty() || selectedParam.empty()) return;
+    if (selectedEffectIndex < 0 || selectedParam.empty()) return;
     
-    auto& automation = effectAutomations[selectedEffect][selectedParam];
+    auto& automation = effectAutomations[selectedEffectIndex][selectedParam];
     auto keyframes = automation.getAllKeyframes();
     
     for (const auto& kf : keyframes) {
@@ -582,7 +575,7 @@ void AutomationWindow::drawNodes() {
         // Draw value label above node (only if selected or hovered)
         if (isSelected || isHovered) {
             if (font.getInfo().family != "") {
-                auto& automation_ref = effectAutomations[selectedEffect][selectedParam];
+                auto& automation_ref = effectAutomations[selectedEffectIndex][selectedParam];
                 float actualValue = automation_ref.getActualValueAtFrame(kf.frame);
                 
                 sf::Text valueLabel(font, std::to_string(static_cast<int>(actualValue)), 9);

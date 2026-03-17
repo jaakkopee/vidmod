@@ -3,12 +3,45 @@
 #include "NeuralTileEffect.h"
 #include "NeuralCircleEffect.h"
 #include <iostream>
+#include <algorithm>
+#include <cmath>
 #include <cstring>  // for strerror
 #include <cerrno>   // for errno
 
 GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), showingPreview(false), isProcessing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), currentDisplayFrame(0) {
     automationWindow = std::make_unique<AutomationWindow>(1000);
     setupUI();
+}
+
+void GUI::syncAutomationTimeline(float previewFps, AudioBuffer* activeAudioBuffer, float durationOverride) {
+    if (!automationWindow) {
+        return;
+    }
+
+    // Keep automation authoring on a stable normalized timeline.
+    // Rendering and preview map their progress onto this range.
+    automationWindow->setTotalFrames(1000);
+}
+
+int GUI::getAutomationFrameForPosition(float previewFps, AudioBuffer* activeAudioBuffer, float durationOverride) const {
+    int totalFrames = automationWindow ? automationWindow->getTotalFrames() : 1000;
+
+    if (totalFrames <= 1) {
+        return 0;
+    }
+
+    return std::clamp(static_cast<int>(std::lround(currentAudioPosition * (totalFrames - 1))), 0, totalFrames - 1);
+}
+
+int GUI::mapRenderFrameToAutomationFrame(int frameIndex, int totalRenderFrames) const {
+    int automationFrames = automationWindow ? automationWindow->getTotalFrames() : 1000;
+
+    if (automationFrames <= 1 || totalRenderFrames <= 1) {
+        return 0;
+    }
+
+    double progress = static_cast<double>(frameIndex) / static_cast<double>(totalRenderFrames - 1);
+    return std::clamp(static_cast<int>(std::lround(progress * (automationFrames - 1))), 0, automationFrames - 1);
 }
 
 void GUI::setupUI() {
@@ -929,7 +962,7 @@ void GUI::processImageLoop() {
                                      audioPlaylist.getAudioBuffer() : 
                                      videoProcessor.getAudioBuffer();
             
-            if (videoProcessor.processImageLoop(currentImagePath, outputPath, effectChain, audioToUse, duration, fps)) {
+            if (renderImageLoopWithAutomation(outputPath, duration, fps, audioToUse)) {
                 statusLabel->setText("Image loop saved: " + outputPath.substr(outputPath.find_last_of("/\\") + 1));
             } else {
                 statusLabel->setText("Failed to process image loop");
@@ -953,6 +986,79 @@ void GUI::processImageLoop() {
     gui.add(paramDialog);
 }
 
+bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float duration, float fps, AudioBuffer* audioToUse) {
+    if (loadedImage.empty()) {
+        std::cerr << "Error: No image loaded for image loop render" << std::endl;
+        return false;
+    }
+
+    if (duration <= 0.0f || fps <= 0.0f) {
+        std::cerr << "Error: Invalid image loop duration or fps" << std::endl;
+        return false;
+    }
+
+    const int frameCount = std::max(1, static_cast<int>(std::lround(duration * fps)));
+    syncAutomationTimeline(fps, audioToUse, duration);
+
+    cv::VideoWriter writer(outputPath,
+                           cv::VideoWriter::fourcc('m', 'p', '4', 'v'),
+                           fps,
+                           cv::Size(loadedImage.cols, loadedImage.rows));
+
+    if (!writer.isOpened()) {
+        std::cerr << "Error: Could not open video writer for: " << outputPath << std::endl;
+        return false;
+    }
+
+    if (audioToUse) {
+        audioToUse->setIndex(0);
+    }
+
+    for (int frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+        if (audioToUse) {
+            size_t audioPos = static_cast<size_t>((static_cast<double>(frameIndex) / frameCount) * audioToUse->size());
+            audioToUse->setIndex(audioPos);
+        }
+
+        applyAutomationAtFrame(mapRenderFrameToAutomationFrame(frameIndex, frameCount));
+        cv::Mat processedFrame = effectChain.applyEffects(loadedImage.clone(), audioToUse, fps);
+        writer.write(processedFrame);
+    }
+
+    writer.release();
+
+    if (!audioToUse) {
+        return true;
+    }
+
+    std::string tempAudioPath = outputPath + ".temp_audio.wav";
+    if (!audioToUse->saveToWAV(tempAudioPath)) {
+        std::cerr << "Failed to save audio to WAV file" << std::endl;
+        return true;
+    }
+
+    std::string tempVideoPath = outputPath + ".temp_video.mp4";
+    if (rename(outputPath.c_str(), tempVideoPath.c_str()) != 0) {
+        std::cerr << "Failed to rename video file. Error: " << strerror(errno) << std::endl;
+        remove(tempAudioPath.c_str());
+        return true;
+    }
+
+    std::string ffmpegCmd = "ffmpeg -y -nostdin -loglevel warning -i \"" + tempVideoPath +
+        "\" -i \"" + tempAudioPath + "\" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k "
+        "-disposition:a:0 default \"" + outputPath + "\"";
+    int result = system(ffmpegCmd.c_str());
+
+    remove(tempVideoPath.c_str());
+    remove(tempAudioPath.c_str());
+
+    if (result != 0) {
+        std::cerr << "FFmpeg muxing failed with code: " << result << std::endl;
+    }
+
+    return true;
+}
+
 void GUI::generatePreview() {
     // Determine which audio buffer to use (playlist takes priority)
     AudioBuffer* activeAudioBuffer = audioPlaylist.getAudioBuffer() ? 
@@ -964,19 +1070,22 @@ void GUI::generatePreview() {
         if (!loadedImage.empty()) {
             statusLabel->setText("Generating preview...");
             cv::Mat previewFrame = loadedImage.clone();
+            const float previewFps = 30.0f;
+            syncAutomationTimeline(previewFps, activeAudioBuffer);
+            int automationFrame = getAutomationFrameForPosition(previewFps, activeAudioBuffer);
             
             // Set audio buffer position based on slider
             if (activeAudioBuffer) {
                 size_t audioPos = static_cast<size_t>(currentAudioPosition * activeAudioBuffer->size());
                 activeAudioBuffer->setIndex(audioPos);
                 std::cout << "Preview using audio position: " << currentAudioPosition 
-                         << " (sample " << audioPos << ")" << std::endl;
+                         << " (sample " << audioPos << ", automation frame " << automationFrame << ")" << std::endl;
             }
             
-            // Apply automation (use frame 0 for static images)
-            applyAutomationAtFrame(0);
+            applyAutomationAtFrame(automationFrame);
+            updateParameterDisplayValues();
             
-            cv::Mat processedFrame = effectChain.applyEffects(previewFrame, activeAudioBuffer, 30.0f);
+            cv::Mat processedFrame = effectChain.applyEffects(previewFrame, activeAudioBuffer, previewFps);
             updatePreview(processedFrame);
             statusLabel->setText("Preview generated");
             return;
@@ -994,10 +1103,13 @@ void GUI::generatePreview() {
     }
     
     // Calculate which video frame to show based on audio position
+    float previewFps = videoProcessor.getFPS() > 0.0f ? videoProcessor.getFPS() : 30.0f;
+    syncAutomationTimeline(previewFps, activeAudioBuffer);
     float audioDuration = static_cast<float>(activeAudioBuffer->size()) / 
                          activeAudioBuffer->getSampleRate();
     float targetTime = currentAudioPosition * audioDuration;
-    int targetFrame = static_cast<int>(targetTime * videoProcessor.getFPS());
+    int automationFrame = getAutomationFrameForPosition(previewFps, activeAudioBuffer);
+    int targetFrame = automationFrame;
     
     // Loop video if needed (if video is shorter than audio)
     if (videoProcessor.getTotalFrames() > 0) {
@@ -1005,7 +1117,8 @@ void GUI::generatePreview() {
     }
     
     std::cout << "Preview at audio position " << currentAudioPosition 
-              << " (" << targetTime << "s, frame " << targetFrame << ")" << std::endl;
+              << " (" << targetTime << "s, automation frame " << automationFrame
+              << ", video frame " << targetFrame << ")" << std::endl;
     
     cv::Mat frame = videoProcessor.getFrameAt(targetFrame);
     
@@ -1021,10 +1134,10 @@ void GUI::generatePreview() {
     activeAudioBuffer->setIndex(audioPos);
     
     // Apply automation for this frame
-    applyAutomationAtFrame(targetFrame);
+    applyAutomationAtFrame(automationFrame);
     updateParameterDisplayValues();
     
-    cv::Mat processedFrame = effectChain.applyEffects(frame, activeAudioBuffer, videoProcessor.getFPS());
+    cv::Mat processedFrame = effectChain.applyEffects(frame, activeAudioBuffer, previewFps);
     updatePreview(processedFrame);
     
     statusLabel->setText("Preview generated");
@@ -1313,8 +1426,8 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                     std::cout << "Video looping - now at frame " << frameCount << " (loop #" << (frameCount / totalFrames + 1) << ")" << std::endl;
                 }
                 
-                // Apply automation for this frame
-                applyAutomationAtFrame(frameCount - 1);
+                // Apply automation across the normalized automation timeline.
+                applyAutomationAtFrame(mapRenderFrameToAutomationFrame(frameCount - 1, targetFrames));
                 
                 // Apply effects
                 cv::Mat processedFrame = effectChain.applyEffects(currentFrame, audioToUse, fps);
@@ -1430,6 +1543,13 @@ void GUI::stopProcessing() {
 }
 
 void GUI::openAutomationWindow() {
+    AudioBuffer* activeAudioBuffer = audioPlaylist.getAudioBuffer() ?
+                                     audioPlaylist.getAudioBuffer() :
+                                     videoProcessor.getAudioBuffer();
+    float previewFps = loadedImage.empty() ?
+                       (videoProcessor.getFPS() > 0.0f ? videoProcessor.getFPS() : 30.0f) :
+                       30.0f;
+    syncAutomationTimeline(previewFps, activeAudioBuffer);
     automationWindow->open(effectChain);
 }
 
@@ -1445,28 +1565,26 @@ void GUI::applyAutomationAtFrame(int frameNumber) {
     if (!automationWindow) return;
     
     const auto& automations = automationWindow->getAutomations();
+    if (automations.empty()) return;
     
-    // Apply automation for each effect that has automation data
+    // Apply automation for each effect instance that has automation data
     for (const auto& effectAutomation : automations) {
-        const std::string& effectName = effectAutomation.first;
+        int effectIndex = effectAutomation.first;
         const auto& paramAutomations = effectAutomation.second;
         
-        // Find the effect in the chain
-        for (size_t i = 0; i < effectChain.size(); ++i) {
-            auto effect = effectChain.getEffect(i);
-            if (effect && effect->getName() == effectName) {
-                // Apply each parameter automation
-                for (const auto& paramAuto : paramAutomations) {
-                    const std::string& paramName = paramAuto.first;
-                    const ParameterAutomation& automation = paramAuto.second;
-                    
-                    if (automation.hasKeyframes()) {
-                        // Use getActualValueAtFrame to scale to parameter's range
-                        float automatedValue = automation.getActualValueAtFrame(frameNumber);
-                        effect->setParameter(paramName, automatedValue);
-                    }
+        // Get the effect at this index in the chain
+        auto effect = effectChain.getEffect(effectIndex);
+        if (effect) {
+            // Apply each parameter automation for this effect instance
+            for (const auto& paramAuto : paramAutomations) {
+                const std::string& paramName = paramAuto.first;
+                const ParameterAutomation& automation = paramAuto.second;
+                
+                if (automation.hasKeyframes()) {
+                    // Use getActualValueAtFrame to scale to parameter's range
+                    float automatedValue = automation.getActualValueAtFrame(frameNumber);
+                    effect->setParameter(paramName, automatedValue);
                 }
-                break;
             }
         }
     }

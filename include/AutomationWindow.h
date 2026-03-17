@@ -13,9 +13,9 @@ private:
     sf::RenderWindow window;
     tgui::Gui gui;
     
-    // Automation data
-    std::map<std::string, std::map<std::string, ParameterAutomation>> effectAutomations;
-    std::string selectedEffect;
+    // Automation data - indexed by effect instance index in the chain
+    std::map<int, std::map<std::string, ParameterAutomation>> effectAutomations;
+    int selectedEffectIndex;  // Index of effect instance in the chain (-1 if none)
     std::string selectedParam;
     int totalFrames;
     
@@ -71,9 +71,10 @@ public:
     void draw();
     
     // Get automation data
-    const std::map<std::string, std::map<std::string, ParameterAutomation>>& getAutomations() const {
+    const std::map<int, std::map<std::string, ParameterAutomation>>& getAutomations() const {
         return effectAutomations;
     }
     
     void setTotalFrames(int frames) { totalFrames = frames; }
+    int getTotalFrames() const { return totalFrames; }
 };

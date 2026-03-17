@@ -79,12 +79,16 @@ private:
     void generatePreview();
     void processVideo();
     void processImageLoop();
+    bool renderImageLoopWithAutomation(const std::string& outputPath, float duration, float fps, AudioBuffer* audioToUse);
     void updatePreview(const cv::Mat& frame);
     void processVideoThreaded(const std::string& outputPath, float duration, AudioBuffer* audioToUse);
     void stopProcessing();
     void updateProcessingProgress();
     void openAutomationWindow();
     void updateAutomationWindow();
+    void syncAutomationTimeline(float previewFps, AudioBuffer* activeAudioBuffer, float durationOverride = -1.0f);
+    int getAutomationFrameForPosition(float previewFps, AudioBuffer* activeAudioBuffer, float durationOverride = -1.0f) const;
+    int mapRenderFrameToAutomationFrame(int frameIndex, int totalRenderFrames) const;
     void applyAutomationAtFrame(int frameNumber);
     void updateParameterDisplayValues();
 
