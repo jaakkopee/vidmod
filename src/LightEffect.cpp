@@ -1,8 +1,11 @@
 #include "LightEffect.h"
 #include <iostream>
+#include <algorithm>
 
 LightEffect::LightEffect() : Effect("Light") {
     setParameter("light_coeff", 0.1f);
+    setParameter("kernel_size", 3.0f);
+    setParameter("morph_iterations", 1.0f);
     setParameter("audio_gain", 1.0f);
 }
 
@@ -16,7 +19,15 @@ cv::Mat LightEffect::findLocalMaxima(const cv::Mat& frame, int x, int y) {
 
 cv::Mat LightEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float videoFps) {
     float lightCoeff = getParameter("light_coeff", 0.1f);
+    int kernelSize = static_cast<int>(getParameter("kernel_size", 3.0f));
+    int morphIterations = static_cast<int>(getParameter("morph_iterations", 1.0f));
     float audioGain = getParameter("audio_gain", 1.0f);
+
+    kernelSize = std::max(1, std::min(kernelSize, 31));
+    if ((kernelSize % 2) == 0) {
+        kernelSize += 1;
+    }
+    morphIterations = std::max(1, std::min(morphIterations, 10));
     
     // Modulate with audio RMS if available
     if (audioBuffer) {
@@ -29,8 +40,8 @@ cv::Mat LightEffect::apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float
     
     // Use morphological dilation to find local maxima (much faster than pixel loops)
     cv::Mat maxima;
-    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
-    cv::dilate(frame, maxima, kernel);
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(kernelSize, kernelSize));
+    cv::dilate(frame, maxima, kernel, cv::Point(-1, -1), morphIterations);
     
     // Convert to float for blending
     cv::Mat frameFloat, maximaFloat;
