@@ -537,6 +537,11 @@ void AutomationWindow::drawConnectingLines() {
     
     if (keyframes.size() < 2) return;
     
+    float minVal = automation.getMinValue();
+    float maxVal = automation.getMaxValue();
+    float range = maxVal - minVal;
+    if (range <= 0) range = 1.0f;
+    
     // Sort keyframes by frame
     std::sort(keyframes.begin(), keyframes.end(), 
         [](const Keyframe& a, const Keyframe& b) { return a.frame < b.frame; });
@@ -554,21 +559,29 @@ void AutomationWindow::drawConnectingLines() {
         float x2 = canvasPos.x + (kf2.frame / static_cast<float>(totalFrames)) * canvasSize.x;
         float y2 = canvasPos.y + canvasSize.y - (kf2.value * canvasSize.y);
         
-        // Color brightness scales with value: dim blue at low values, bright cyan at high
-        uint8_t a1 = static_cast<uint8_t>(80 + static_cast<int>(kf1.value * 175));
-        uint8_t a2 = static_cast<uint8_t>(80 + static_cast<int>(kf2.value * 175));
+        // Get actual values and their percentage within the range
+        float actual1 = automation.getActualValueAtFrame(kf1.frame);
+        float actual2 = automation.getActualValueAtFrame(kf2.frame);
+        float pct1 = (actual1 - minVal) / range;
+        float pct2 = (actual2 - minVal) / range;
+        pct1 = std::clamp(pct1, 0.0f, 1.0f);
+        pct2 = std::clamp(pct2, 0.0f, 1.0f);
+        
+        // Color brightness scales with actual value percentage
+        uint8_t a1 = static_cast<uint8_t>(80 + static_cast<int>(pct1 * 175));
+        uint8_t a2 = static_cast<uint8_t>(80 + static_cast<int>(pct2 * 175));
         
         sf::Vertex v1;
         v1.position = sf::Vector2f(x1, y1);
-        v1.color = sf::Color(static_cast<uint8_t>(60 + kf1.value * 100), 
-                             static_cast<uint8_t>(120 + kf1.value * 135), 
+        v1.color = sf::Color(static_cast<uint8_t>(60 + pct1 * 100), 
+                             static_cast<uint8_t>(120 + pct1 * 135), 
                              255, a1);
         lines.append(v1);
         
         sf::Vertex v2;
         v2.position = sf::Vector2f(x2, y2);
-        v2.color = sf::Color(static_cast<uint8_t>(60 + kf2.value * 100),
-                             static_cast<uint8_t>(120 + kf2.value * 135),
+        v2.color = sf::Color(static_cast<uint8_t>(60 + pct2 * 100),
+                             static_cast<uint8_t>(120 + pct2 * 135),
                              255, a2);
         lines.append(v2);
     }
@@ -581,6 +594,11 @@ void AutomationWindow::drawNodes() {
     
     auto& automation = effectAutomations[selectedEffectIndex][selectedParam];
     auto keyframes = automation.getAllKeyframes();
+    
+    float minVal = automation.getMinValue();
+    float maxVal = automation.getMaxValue();
+    float range = maxVal - minVal;
+    if (range <= 0) range = 1.0f;
     
     for (const auto& kf : keyframes) {
         float x = canvasPos.x + (kf.frame / static_cast<float>(totalFrames)) * canvasSize.x;
@@ -607,15 +625,16 @@ void AutomationWindow::drawNodes() {
             fillColor = sf::Color(100, 255, 255);
             outlineColor = sf::Color(150, 255, 255);
             outlineWidth = 2.0f;
-        }
-        
-        // Scale node radius by normalized value when not in special state
-        if (!isSelected && !isHovered) {
-            radius = NODE_RADIUS * (0.6f + 0.8f * kf.value);
-            // Color shifts from dim green (low) to bright lime/yellow (high)
-            uint8_t r = static_cast<uint8_t>(60  + static_cast<int>(kf.value * 200));
-            uint8_t g = static_cast<uint8_t>(160 + static_cast<int>(kf.value * 95));
-            uint8_t b = static_cast<uint8_t>(60  - static_cast<int>(kf.value * 40));
+        } else {
+            // Color/size based on actual value within the range
+            float actualValue = automation.getActualValueAtFrame(kf.frame);
+            float pct = std::clamp((actualValue - minVal) / range, 0.0f, 1.0f);
+            
+            radius = NODE_RADIUS * (0.6f + 0.8f * pct);
+            // Color shifts from dim green (low values) to bright lime/yellow (high values)
+            uint8_t r = static_cast<uint8_t>(60  + static_cast<int>(pct * 200));
+            uint8_t g = static_cast<uint8_t>(160 + static_cast<int>(pct * 95));
+            uint8_t b = static_cast<uint8_t>(60  - static_cast<int>(pct * 40));
             fillColor = sf::Color(r, g, b);
             outlineColor = sf::Color(r, g, b, 180);
         }
@@ -628,7 +647,7 @@ void AutomationWindow::drawNodes() {
         node.setOutlineThickness(outlineWidth);
         window.draw(node);
         
-        // Draw value label above node (when selected, hovered, or always-on for context)
+        // Draw value label above node (when selected or hovered)
         if ((isSelected || isHovered) && font.getInfo().family != "") {
             auto& automation_ref = effectAutomations[selectedEffectIndex][selectedParam];
             float actualValue = automation_ref.getActualValueAtFrame(kf.frame);
