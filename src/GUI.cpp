@@ -101,84 +101,110 @@ void GUI::setupUI() {
     });
     leftPanel->add(addButton);
     
-    // Audio Playlist Section
-    auto playlistLabel = tgui::Label::create("Audio Playlist:");
-    playlistLabel->setPosition("5%", "41%");
-    playlistLabel->setTextSize(16);
-    leftPanel->add(playlistLabel);
+    // Effect Chain Label
+    auto chainLabel = tgui::Label::create("Effect Chain:");
+    chainLabel->setPosition("5%", "41%");
+    chainLabel->setTextSize(16);
+    leftPanel->add(chainLabel);
+
+    chainList = tgui::ListBox::create();
+    chainList->setSize("90%", "40%");
+    chainList->setPosition("5%", "46%");
+    chainList->onItemSelect([this](int) { updateParameterPanel(); });
+    leftPanel->add(chainList);
     
-    playlistBox = tgui::ListBox::create();
-    playlistBox->setSize("90%", "25%");
-    playlistBox->setPosition("5%", "46%");
-    leftPanel->add(playlistBox);
+    // Chain management buttons (right next to the chain list)
+    auto removeEffectBtn = tgui::Button::create("Remove Effect");
+    removeEffectBtn->setSize("90%", "4%");
+    removeEffectBtn->setPosition("5%", "87%");
+    removeEffectBtn->onPress([this]() { removeSelectedEffect(); });
+    leftPanel->add(removeEffectBtn);
     
-    auto addAudioBtn = tgui::Button::create("Add Audio");
-    addAudioBtn->setSize("44%", "5%");
-    addAudioBtn->setPosition("5%", "73%");
-    addAudioBtn->onPress([this]() { addAudioToPlaylist(); });
-    leftPanel->add(addAudioBtn);
+    auto moveEffectUpBtn = tgui::Button::create("▲ Move Effect Up");
+    moveEffectUpBtn->setSize("44%", "4%");
+    moveEffectUpBtn->setPosition("5%", "92%");
+    moveEffectUpBtn->onPress([this]() { moveEffectUp(); });
+    leftPanel->add(moveEffectUpBtn);
     
-    auto removeAudioBtn = tgui::Button::create("Remove");
-    removeAudioBtn->setSize("44%", "5%");
-    removeAudioBtn->setPosition("51%", "73%");
-    removeAudioBtn->onPress([this]() { removeAudioFromPlaylist(); });
-    leftPanel->add(removeAudioBtn);
+    auto moveEffectDownBtn = tgui::Button::create("▼ Move Effect Down");
+    moveEffectDownBtn->setSize("44%", "4%");
+    moveEffectDownBtn->setPosition("51%", "92%");
+    moveEffectDownBtn->onPress([this]() { moveEffectDown(); });
+    leftPanel->add(moveEffectDownBtn);
     
-    auto clearPlaylistBtn = tgui::Button::create("Clear Playlist");
-    clearPlaylistBtn->setSize("90%", "5%");
-    clearPlaylistBtn->setPosition("5%", "79%");
-    clearPlaylistBtn->onPress([this]() { clearPlaylist(); });
-    leftPanel->add(clearPlaylistBtn);
-    
-    // Chain management buttons
-    auto removeButton = tgui::Button::create("Remove");
-    removeButton->setSize("44%", "5%");
-    removeButton->setPosition("5%", "86%");
-    removeButton->onPress([this]() { removeSelectedEffect(); });
-    leftPanel->add(removeButton);
-    
-    auto upButton = tgui::Button::create("Move Up");
-    upButton->setSize("44%", "5%");
-    upButton->setPosition("51%", "86%");
-    upButton->onPress([this]() { moveEffectUp(); });
-    leftPanel->add(upButton);
-    
-    auto downButton = tgui::Button::create("Move Down");
-    downButton->setSize("90%", "5%");
-    downButton->setPosition("5%", "92%");
-    downButton->onPress([this]() { moveEffectDown(); });
-    leftPanel->add(downButton);
-    
-    // Middle panel for effect chain
+    // Middle panel for audio and file management
     auto middlePanel = tgui::Panel::create();
     middlePanel->setSize("20%", "100%");
     middlePanel->setPosition("20%", "0%");
     middlePanel->getRenderer()->setBackgroundColor(tgui::Color(240, 240, 240));
     mainPanel->add(middlePanel);
     
-    auto chainLabel = tgui::Label::create("Effect Chain:");
-    chainLabel->setPosition("5%", "2%");
-    chainLabel->setTextSize(16);
-    middlePanel->add(chainLabel);
+    // Audio Playlist Section
+    auto playlistLabel = tgui::Label::create("Audio Playlist:");
+    playlistLabel->setPosition("5%", "2%");
+    playlistLabel->setTextSize(16);
+    middlePanel->add(playlistLabel);
     
-    chainList = tgui::ListBox::create();
-    chainList->setSize("90%", "60%");
-    chainList->setPosition("5%", "7%");
-    chainList->onItemSelect([this](int) { updateParameterPanel(); });
-    middlePanel->add(chainList);
+    playlistBox = tgui::ListBox::create();
+    playlistBox->setSize("90%", "25%");
+    playlistBox->setPosition("5%", "7%");
+    middlePanel->add(playlistBox);
     
-    // Save/Load chain buttons
+    auto addAudioBtn = tgui::Button::create("▲ Add Audio");
+    addAudioBtn->setSize("44%", "4%");
+    addAudioBtn->setPosition("5%", "33%");
+    addAudioBtn->onPress([this]() { addAudioToPlaylist(); });
+    middlePanel->add(addAudioBtn);
+    
+    auto removeAudioBtn = tgui::Button::create("▼ Remove Audio");
+    removeAudioBtn->setSize("44%", "4%");
+    removeAudioBtn->setPosition("51%", "33%");
+    removeAudioBtn->onPress([this]() { removeAudioFromPlaylist(); });
+    middlePanel->add(removeAudioBtn);
+    
+    auto clearPlaylistBtn = tgui::Button::create("Clear Playlist");
+    clearPlaylistBtn->setSize("90%", "4%");
+    clearPlaylistBtn->setPosition("5%", "38%");
+    clearPlaylistBtn->onPress([this]() { clearPlaylist(); });
+    middlePanel->add(clearPlaylistBtn);
+    
+    // Chain Save/Load buttons
     auto saveChainBtn = tgui::Button::create("Save Chain");
     saveChainBtn->setSize("44%", "4%");
-    saveChainBtn->setPosition("5%", "69%");
+    saveChainBtn->setPosition("5%", "43%");
     saveChainBtn->onPress([this]() { saveEffectChain(); });
     middlePanel->add(saveChainBtn);
     
     auto loadChainBtn = tgui::Button::create("Load Chain");
     loadChainBtn->setSize("44%", "4%");
-    loadChainBtn->setPosition("51%", "69%");
+    loadChainBtn->setPosition("51%", "43%");
     loadChainBtn->onPress([this]() { loadEffectChain(); });
     middlePanel->add(loadChainBtn);
+    
+    // File Loading Section
+    auto fileLabel = tgui::Label::create("Input Files:");
+    fileLabel->setPosition("5%", "48%");
+    fileLabel->setTextSize(16);
+    middlePanel->add(fileLabel);
+    
+    auto loadVideoButton = tgui::Button::create("Load Video");
+    loadVideoButton->setSize("90%", "4%");
+    loadVideoButton->setPosition("5%", "53%");
+    loadVideoButton->onPress([this]() { loadVideoFile(); });
+    middlePanel->add(loadVideoButton);
+    
+    auto loadImageButton = tgui::Button::create("Load Image");
+    loadImageButton->setSize("90%", "4%");
+    loadImageButton->setPosition("5%", "58%");
+    loadImageButton->onPress([this]() { loadImageFile(); });
+    middlePanel->add(loadImageButton);
+    
+    // Automation button
+    auto automationButton = tgui::Button::create("Automation");
+    automationButton->setSize("90%", "4%");
+    automationButton->setPosition("5%", "63%");
+    automationButton->onPress([this]() { openAutomationWindow(); });
+    middlePanel->add(automationButton);
     
     // Audio position slider
     auto audioTimeLabel = tgui::Label::create("Audio Time:");
@@ -217,7 +243,7 @@ void GUI::setupUI() {
     
     previewButton = tgui::Button::create("Preview Frame");
     previewButton->setSize("90%", "5%");
-    previewButton->setPosition("5%", "83%");
+    previewButton->setPosition("5%", "82%");
     previewButton->onPress([this]() { 
         std::cout << "Preview button clicked!" << std::endl;
         generatePreview(); 
@@ -226,23 +252,12 @@ void GUI::setupUI() {
     
     verboseCheckbox = tgui::CheckBox::create("Verbose Progress");
     verboseCheckbox->setSize(15, 15);
-    verboseCheckbox->setPosition("5%", "89.5%");
+    verboseCheckbox->setPosition("5%", "88%");
     verboseCheckbox->setChecked(true);
     verboseCheckbox->onChange([this](bool checked) {
         videoProcessor.setVerbose(checked);
     });
     middlePanel->add(verboseCheckbox);
-    
-    processButton = tgui::Button::create("Process Video");
-    processButton->setSize("90%", "5%");
-    processButton->setPosition("5%", "94%");
-    processButton->onPress([this]() { 
-        std::cout << "Process button clicked!" << std::endl;
-        processVideo(); 
-    });
-    middlePanel->add(processButton);
-    
-    std::cout << "Process button created at position 94% with size 5%" << std::endl;
     
     // Right panel for parameters
     auto rightPanel = tgui::Panel::create();
@@ -263,37 +278,37 @@ void GUI::setupUI() {
     paramPanel->getHorizontalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Never);
     rightPanel->add(paramPanel);
     
-    // File loading buttons at bottom of right panel
-    auto loadVideoButton = tgui::Button::create("Load Video");
-    loadVideoButton->setSize("90%", "5%");
-    loadVideoButton->setPosition("5%", "80%");
-    loadVideoButton->onPress([this]() { loadVideoFile(); });
-    rightPanel->add(loadVideoButton);
+    // Processing buttons at bottom of right panel
+    auto processVideoButton = tgui::Button::create("Process Video");
+    processVideoButton->setSize("90%", "4%");
+    processVideoButton->setPosition("5%", "80%");
+    processVideoButton->onPress([this]() { 
+        std::cout << "Process video button clicked!" << std::endl;
+        processVideo(); 
+    });
+    rightPanel->add(processVideoButton);
+    processButton = processVideoButton;  // Keep pointer for compatibility
     
-    auto loadImageButton = tgui::Button::create("Load Image Loop");
-    loadImageButton->setSize("90%", "5%");
-    loadImageButton->setPosition("5%", "87%");
-    loadImageButton->onPress([this]() { loadImageFile(); });
-    rightPanel->add(loadImageButton);
-    
-    // Automation button
-    auto automationButton = tgui::Button::create("Automation");
-    automationButton->setSize("90%", "5%");
-    automationButton->setPosition("5%", "94%");
-    automationButton->onPress([this]() { openAutomationWindow(); });
-    rightPanel->add(automationButton);
+    auto processImageButton = tgui::Button::create("Process Image Loop");
+    processImageButton->setSize("90%", "4%");
+    processImageButton->setPosition("5%", "85%");
+    processImageButton->onPress([this]() { 
+        std::cout << "Process image loop button clicked!" << std::endl;
+        processImageLoop(); 
+    });
+    rightPanel->add(processImageButton);
     
     // Status label at bottom of preview area (not covering the buttons!)
     statusLabel = tgui::Label::create("Ready");
     statusLabel->setSize("38%", "8%");
-    statusLabel->setPosition("61%", "91%");
+    statusLabel->setPosition("61%", "87%");
     statusLabel->setTextSize(14);
     mainPanel->add(statusLabel);
 
     // Processing progress bar for image/video rendering
     processingProgressBar = tgui::ProgressBar::create();
     processingProgressBar->setSize("38%", "2.5%");
-    processingProgressBar->setPosition("61%", "88%");
+    processingProgressBar->setPosition("61%", "83%");
     processingProgressBar->setMinimum(0);
     processingProgressBar->setMaximum(100);
     processingProgressBar->setValue(0);
@@ -1341,7 +1356,7 @@ void GUI::updatePreview(const cv::Mat& frame) {
     
     // Scale to fit preview area
     float scaleX = (window.getSize().x * 0.38f) / rgbaFrame.cols;
-    float scaleY = (window.getSize().y * 0.82f) / rgbaFrame.rows;
+    float scaleY = (window.getSize().y * 0.75f) / rgbaFrame.rows;
     float scale = std::min(scaleX, scaleY);
     
     previewSprite.setScale({scale, scale});
