@@ -1,18 +1,226 @@
-# FFT Video Modulator - C++ Version
+# VidMod
 
-A C++ application for applying audio-reactive visual effects to videos using FFT analysis. This application provides a GUI for chaining multiple effects and processing videos with audio synchronization.
+A C++ application for building chained video effects driven by image processing, fractal rendering, neighborhood-state updates, and audio analysis. VidMod provides a GUI for assembling effect chains, previewing frames, and rendering synchronized output from video, still images, and audio.
 
 ## Features
 
 - **Effect Chaining**: Add multiple effects in sequence and reorder them freely
-- **Audio-Reactive**: Effects respond to audio analysis using FFT
+- **Mixed Algorithm Set**: Frequency-domain, spatial, iterative, fractal, and neural-style effects
+- **Audio-Reactive**: Effects can respond to RMS or FFT-derived band energy
 - **Real-time Preview**: Preview individual frames with effects applied
-- **Multiple Effects**:
-  - **FFT Effect**: Modulates video channels based on audio frequency bands
-  - **Shadow Effect**: Enhances shadows using local minima detection
-  - **Light Effect**: Enhances highlights using local maxima detection
-  - **Diffuse Effect**: Applies color diffusion across neighboring pixels
-  - **Audio Color Effect**: Maps audio frequency bands to RGB channels
+- **Automation**: Per-parameter timeline automation across effect chains
+- **Save/Load Chains**: JSON serialization for effect setups
+
+## Algorithm Families
+
+VidMod is not a single FFT effect processor. The current effects fall into several algorithm classes:
+
+| Effect | Algorithm Type | Core Operation |
+| --- | --- | --- |
+| FFT | Frequency-domain audio analysis + channel modulation | Window audio, FFT bands, add energy to B/G/R channels |
+| AudioColor | Frequency-domain audio analysis + color transform | Map multi-band audio energy into RGB or HSV transforms |
+| Shadow | Spatial morphology | Erode image to local minima, then blend into original |
+| Light | Spatial morphology | Dilate image to local maxima, then blend into original |
+| Diffuse | Iterative spatial filtering | Repeated box blur with configurable kernel growth and decay |
+| Fractal | Escape-time fractal rendering | Render Julia set in image space, then blend with source |
+| NeuralTile | Grid-based neighborhood update | Build activation grid, iterate local averaging, render rectangles |
+| NeuralCircle | Grid-based neighborhood update | Build activation grid, iterate local averaging, render circles |
+
+## Effect Algorithms
+
+### FFT
+**Type**: Frequency-domain audio feature extraction
+
+**Operation**:
+- Pull one audio chunk per video frame
+- Apply a Hann/Hanning window
+- Split FFT output into bass, mid, and treble bands
+- Add those band averages into the image channels
+
+**Pseudocode**:
+```text
+audio_chunk = get_audio_for_frame()
+windowed = hann(audio_chunk)
+bass, mid, treble = fft_split_3(windowed)
+
+output.B += mean(treble) * fft_b_coeff * audio_gain
+output.G += mean(mid)    * fft_g_coeff * audio_gain
+output.R += mean(bass)   * fft_r_coeff * audio_gain
+```
+
+**Main parameters**:
+- `fft_r_coeff`, `fft_g_coeff`, `fft_b_coeff`
+- `audio_gain`
+
+### AudioColor
+**Type**: Frequency-domain audio analysis + color remapping
+
+**Operation**:
+- Compute 8-band FFT features from the current audio slice
+- In RGB mode, scale B/G/R channels from different band groups
+- In HSV modes, rotate hue and modulate saturation/value from band energy
+
+**Pseudocode**:
+```text
+bands = fft_split_8(audio_chunk)
+
+if mode == RGB:
+   red_energy   = mean(bands[0..2])
+   green_energy = mean(bands[3..5])
+   blue_energy  = mean(bands[6..7])
+   scale channels by energy
+
+if mode == HSV:
+   hue_shift        = band-derived hue rotation
+   saturation_scale = rms-derived modulation
+   value_scale      = peak/rms-derived modulation
+```
+
+**Main parameters**:
+- `color_coeff`, `mode`
+- `hue_strength`, `saturation_strength`, `value_strength`
+- `audio_gain`
+
+### Shadow
+**Type**: Spatial morphology
+
+**Operation**:
+- Compute a local-minima image using erosion
+- Blend minima back into the source to deepen dark structure
+
+**Pseudocode**:
+```text
+minima = erode(frame, kernel_size, morph_iterations)
+output = lerp(frame, minima, shadow_coeff * audio_scale)
+```
+
+**Main parameters**:
+- `shadow_coeff`
+- `kernel_size`, `morph_iterations`
+- `audio_gain`
+
+### Light
+**Type**: Spatial morphology
+
+**Operation**:
+- Compute a local-maxima image using dilation
+- Blend maxima back into the source to emphasize highlights
+
+**Pseudocode**:
+```text
+maxima = dilate(frame, kernel_size, morph_iterations)
+output = lerp(frame, maxima, light_coeff * audio_scale)
+```
+
+**Main parameters**:
+- `light_coeff`
+- `kernel_size`, `morph_iterations`
+- `audio_gain`
+
+### Diffuse
+**Type**: Iterative spatial filtering
+
+**Operation**:
+- Convert the frame to float
+- Repeatedly blur it with a configurable box filter
+- Blend the blurred result back into the current image each pass
+- Optionally grow kernel size and decay the blend strength over iterations
+
+**Pseudocode**:
+```text
+state = frame
+for i in 0..iterations-1:
+   k = kernel_size + 2 * kernel_growth * i
+   blurred = box_filter(state, k)
+   coeff_i = diffuse_coeff * iteration_decay^i
+   state = lerp(state, blurred, coeff_i * audio_scale)
+```
+
+**Main parameters**:
+- `diffuse_coeff`, `iterations`
+- `kernel_size`, `kernel_growth`, `iteration_decay`
+- `audio_gain`
+
+### Fractal
+**Type**: Escape-time fractal rendering
+
+**Operation**:
+- Map each pixel into the complex plane
+- Iterate the Julia recurrence $z_{n+1} = z_n^2 + c$
+- Use escape iteration count to color the pixel
+- Optionally blend the fractal with the source image
+
+**Pseudocode**:
+```text
+for each pixel (x, y):
+   z0 = map_pixel_to_complex_plane(x, y, zoom, center_x, center_y)
+   z0 += source_brightness * input_warp
+   iter = julia_escape_time(z0, c=(cx, cy), max_iter)
+   fractal_color = palette(iter / max_iter)
+   output = lerp(source_color, fractal_color, blend)
+```
+
+**Main parameters**:
+- `zoom`, `center_x`, `center_y`
+- `cx`, `cy`, `max_iter`
+- `blend`, `input_warp`, `color_source_mix`
+- `audio_depth`, `audio_gain`
+
+### NeuralTile
+**Type**: Grid-based iterative neighborhood system
+
+**Operation**:
+- Build a low-resolution neuron grid from frame brightness
+- Update activations from neighboring cells for several iterations
+- Render the grid back as rectangles with activation-based size and motion
+
+**Pseudocode**:
+```text
+grid = sample_frame_into_tiles(frame)
+for i in 0..iterations-1:
+   for each cell:
+      input = self + selected_neighbors(mode)
+      next = activation_function(average(input))
+render each cell as rectangle(size, offset, color from activation)
+```
+
+**Main parameters**:
+- `tileSize`, `threshold`, `mode`, `iterations`
+- `movement`, `audioMod`, `feedback`, `audio_gain`
+
+### NeuralCircle
+**Type**: Grid-based iterative neighborhood system
+
+**Operation**:
+- Same update model as `NeuralTile`
+- Render the activation grid as circles instead of rectangles
+
+**Pseudocode**:
+```text
+grid = sample_frame_into_cells(frame)
+iterate neighbor-averaged activations
+render each cell as circle(radius, offset, intensity)
+```
+
+**Main parameters**:
+- `circleSize`, `threshold`, `mode`, `iterations`
+- `movement`, `audioMod`, `feedback`, `audio_gain`
+
+## Processing Model
+
+Effect chains are applied sequentially. All effects in one video frame read the same audio slice, then the audio cursor advances once for the next frame.
+
+**Pseudocode**:
+```text
+saved_audio_index = audio.index
+result = frame
+
+for effect in chain:
+   audio.index = saved_audio_index
+   result = effect.apply(result, audio, fps)
+
+audio.index = saved_audio_index + samples_per_video_frame
+```
 
 ## Dependencies
 
@@ -52,14 +260,14 @@ cmake ..
 make
 
 # The executable will be in build/bin/
-./bin/FFTVidMod
+./bin/VidMod
 ```
 
 ## Usage
 
 1. **Launch the application**:
    ```bash
-   ./bin/FFTVidMod
+   ./bin/VidMod
    ```
 
 2. **Load Media Files**:
@@ -86,28 +294,11 @@ make
    - Enter output file path when prompted
    - Wait for processing to complete
 
-## Effect Parameters
+## Notes On Parameters
 
-### FFT Effect
-- `fft_r_coeff`: Red channel FFT coefficient (default: 1.0)
-- `fft_g_coeff`: Green channel FFT coefficient (default: 1.0)
-- `fft_b_coeff`: Blue channel FFT coefficient (default: 1.0)
-- `red_bias`: Red channel bias (default: 64)
-- `green_bias`: Green channel bias (default: 64)
-- `blue_bias`: Blue channel bias (default: 64)
-
-### Shadow Effect
-- `shadow_coeff`: Shadow intensity coefficient (default: 0.1)
-
-### Light Effect
-- `light_coeff`: Light intensity coefficient (default: 0.1)
-
-### Diffuse Effect
-- `diffuse_coeff`: Diffusion coefficient (default: 0.1)
-- `iterations`: Number of diffusion iterations (default: 1)
-
-### Audio Color Effect
-- `color_coeff`: Color modulation coefficient (default: 1.0)
+- Parameters are stored as floats, but some are treated as integer-like during processing, such as `iterations`, `kernel_size`, and `morph_iterations`.
+- Audio-reactive effects usually expose an `audio_gain` parameter, which scales how strongly audio influences the main coefficients.
+- For more concrete recipes, see [EXAMPLES.md](EXAMPLES.md).
 
 ## Project Structure
 
@@ -147,8 +338,8 @@ fftvidmodcpp/
 ## Notes
 
 - **Memory Usage**: The application loads entire videos into memory for processing. Large videos may require significant RAM.
-- **Performance**: Effect processing is not yet optimized for real-time. Processing time depends on video resolution, duration, and number of effects.
-- **File Formats**: Supports common video formats (MP4, AVI, MOV) and audio formats (WAV, FLAC, OGG)
+- **Performance**: Spatial filters, fractal rendering, and iterative grid effects can be significantly heavier than simple channel modulation.
+- **File Formats**: Supports common video formats (MP4, AVI, MOV) and audio formats (WAV, FLAC, OGG).
 
 ## Future Enhancements
 

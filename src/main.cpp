@@ -3,8 +3,8 @@
 #include <iostream>
 
 int main() {
-    std::cout << "=== FFT Video Modulator ===" << std::endl;
-    std::cout << "Welcome to the FFT Video Modulator!" << std::endl;
+    std::cout << "=== VidMod ===" << std::endl;
+    std::cout << "Welcome to VidMod!" << std::endl;
     std::cout << "Use the GUI to:" << std::endl;
     std::cout << "  1. Load a video and audio file" << std::endl;
     std::cout << "  2. Add effects to the chain" << std::endl;
@@ -16,7 +16,7 @@ int main() {
     std::cout << "Creating window..." << std::endl;
     
     // Create the main window with default style (titlebar, resize, close)
-    sf::RenderWindow window(sf::VideoMode({1600, 900}), "FFT Video Modulator", sf::Style::Default);
+    sf::RenderWindow window(sf::VideoMode({1600, 900}), "VidMod", sf::Style::Default);
     window.setFramerateLimit(60);
     window.requestFocus(); // Request focus on macOS
     

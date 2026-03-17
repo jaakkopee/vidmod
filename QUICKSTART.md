@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Get started with FFT Video Modulator in 5 minutes!
+Get started with VidMod in 5 minutes!
 
 ## 1. Install Dependencies
 
@@ -29,7 +29,7 @@ sudo apt-get install cmake build-essential libsfml-dev libtgui-dev \
 ## 4. Run the Application
 ```bash
 cd build/bin
-./FFTVidMod
+./VidMod
 ```
 
 ## 5. Process Your First Video

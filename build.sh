@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# Build script for FFT Video Modulator
+# Build script for VidMod
 
 set -e  # Exit on error
 
-echo "=== FFT Video Modulator Build Script ==="
+echo "=== VidMod Build Script ==="
 echo ""
 
 # Check if dependencies are installed
@@ -33,9 +33,9 @@ make -j$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
 
 echo ""
 echo "=== Build Complete ==="
-echo "Executable: build/bin/FFTVidMod"
+echo "Executable: build/bin/VidMod"
 echo ""
 echo "To run the application:"
 echo "  cd build/bin"
-echo "  ./FFTVidMod"
+echo "  ./VidMod"
 echo ""

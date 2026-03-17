@@ -2,7 +2,11 @@
 
 This document describes some example effect chains you can create in the application.
 
-## Basic Effects
+## By Algorithm Family
+
+This document is organized by the kind of processing each effect performs, rather than by a vague “basic vs creative” split.
+
+## Frequency-Domain Audio Effects
 
 ### 1. Audio-Reactive FFT
 **Single Effect**: FFT
@@ -16,7 +20,28 @@ This document describes some example effect chains you can create in the applica
 
 **Result**: Video colors modulated by audio frequency bands.
 
-### 2. Shadow Enhancement
+### 2. AudioColor Spectrum Mapping
+**Single Effect**: AudioColor
+**Parameters**:
+- color_coeff: 1.0
+- mode: 2
+- hue_strength: 1.0
+- saturation_strength: 1.2
+- value_strength: 0.8
+- audio_gain: 0.7
+
+**Result**: Frequency bands map into hue, saturation, and brightness shifts.
+
+### 3. Glitch Style
+**Effect Chain**:
+1. FFT (fft_r: 3.0, fft_g: 0.5, fft_b: 1.0)
+2. AudioColor (color_coeff: 1.0)
+
+**Result**: Glitchy, distorted colors that react strongly to audio.
+
+## Spatial Morphology Effects
+
+### 4. Shadow Enhancement
 **Single Effect**: Shadow
 **Parameters**:
 - shadow_coeff: 0.3
@@ -26,7 +51,7 @@ This document describes some example effect chains you can create in the applica
 
 **Result**: Augmented shadows throughout the video.
 
-### 3. Light Enhancement
+### 5. Light Enhancement
 **Single Effect**: Light
 **Parameters**:
 - light_coeff: 0.3
@@ -36,41 +61,21 @@ This document describes some example effect chains you can create in the applica
 
 **Result**: Enhanced highlights and bright areas.
 
-## Combined Effects
-
-### 4. FFT with Shadow
+### 6. FFT with Shadow
 **Effect Chain**:
 1. FFT (fft_r: 1.2, fft_g: 1.2, fft_b: 1.2)
 2. Shadow (shadow_coeff: 0.2)
 
 **Result**: Audio-reactive colors with enhanced shadows.
 
-### 5. Diffuse and Light
+## Iterative Spatial Filtering
+
+### 7. Diffuse and Light
 **Effect Chain**:
 1. Diffuse (diffuse_coeff: 0.15, iterations: 2, kernel_size: 5, kernel_growth: 1, iteration_decay: 0.9)
 2. Light (light_coeff: 0.25, kernel_size: 5, morph_iterations: 1)
 
 **Result**: Smooth, blurred colors with bright highlights.
-
-### 6. Full Audio-Reactive Suite
-**Effect Chain**:
-1. AudioColor (color_coeff: 1.5, mode: 2, hue_strength: 1.0, saturation_strength: 1.2, value_strength: 0.8, audio_gain: 0.7)
-2. FFT (fft_r: 0.8, fft_g: 0.8, fft_b: 0.8)
-3. Diffuse (diffuse_coeff: 0.1, iterations: 1, kernel_size: 3, kernel_growth: 0, iteration_decay: 1.0, audio_gain: 0.5)
-4. Shadow (shadow_coeff: 0.15, kernel_size: 3, morph_iterations: 1, audio_gain: 0.5)
-5. Light (light_coeff: 0.15, kernel_size: 3, morph_iterations: 1, audio_gain: 0.5)
-
-**Result**: Complex audio-reactive visual effects with enhanced depth.
-
-## Creative Chains
-
-### 7. Psychedelic
-**Effect Chain**:
-1. FFT (fft_r: 2.0, fft_g: 1.5, fft_b: 2.5, all biases: 0)
-2. Diffuse (diffuse_coeff: 0.2, iterations: 3)
-3. AudioColor (color_coeff: 2.0)
-
-**Result**: Intense, trippy visual effects.
 
 ### 8. Subtle Enhancement
 **Effect Chain**:
@@ -80,14 +85,7 @@ This document describes some example effect chains you can create in the applica
 
 **Result**: Subtle smoothing and depth enhancement.
 
-### 9. Glitch Style
-**Effect Chain**:
-1. FFT (fft_r: 3.0, fft_g: 0.5, fft_b: 1.0)
-2. AudioColor (color_coeff: 1.0)
-
-**Result**: Glitchy, distorted colors that react to audio.
-
-### 10. Evolving Bloom (Advanced)
+### 9. Evolving Bloom (Advanced)
 **Effect Chain**:
 1. Diffuse (diffuse_coeff: 0.16, iterations: 4, kernel_size: 3, kernel_growth: 1, iteration_decay: 0.82, audio_gain: 0.55)
 2. Light (light_coeff: 0.12, kernel_size: 5, morph_iterations: 2, audio_gain: 0.40)
@@ -100,6 +98,26 @@ This document describes some example effect chains you can create in the applica
 - Animate `Diffuse.iteration_decay` from `1.0 -> 0.75` to make later diffusion passes stronger relative to early ones.
 - Keep `Light.morph_iterations` fixed to avoid flicker while the bloom evolves.
 
+## Composite Multi-Algorithm Chains
+
+### 10. Full Audio-Reactive Suite
+**Effect Chain**:
+1. AudioColor (color_coeff: 1.5, mode: 2, hue_strength: 1.0, saturation_strength: 1.2, value_strength: 0.8, audio_gain: 0.7)
+2. FFT (fft_r: 0.8, fft_g: 0.8, fft_b: 0.8)
+3. Diffuse (diffuse_coeff: 0.1, iterations: 1, kernel_size: 3, kernel_growth: 0, iteration_decay: 1.0, audio_gain: 0.5)
+4. Shadow (shadow_coeff: 0.15, kernel_size: 3, morph_iterations: 1, audio_gain: 0.5)
+5. Light (light_coeff: 0.15, kernel_size: 3, morph_iterations: 1, audio_gain: 0.5)
+
+**Result**: Complex audio-reactive visual effects with enhanced depth.
+
+### 11. Psychedelic
+**Effect Chain**:
+1. FFT (fft_r: 2.0, fft_g: 1.5, fft_b: 2.5, all biases: 0)
+2. Diffuse (diffuse_coeff: 0.2, iterations: 3)
+3. AudioColor (color_coeff: 2.0)
+
+**Result**: Intense, trippy visual effects.
+
 ## Tips
 
 1. **Start Simple**: Begin with single effects to understand their behavior
@@ -108,8 +126,6 @@ This document describes some example effect chains you can create in the applica
 4. **Audio Sync**: Effects with audio reactivity work best with music that has clear beats
 5. **Performance**: More effects = slower processing. Consider the trade-off.
 6. **Experimentation**: The best results often come from unexpected combinations!
-
-## Parameter Guidelines
 
 ## Newly Exposed Parameters
 
