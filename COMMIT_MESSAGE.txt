@@ -1,0 +1,70 @@
+feat: Complete automation window with per-parameter magnitude scaling and live progress tracking
+
+SUMMARY
+=======
+Implement a comprehensive node-based parameter automation editor with per-effect-instance 
+automation, independent magnitude multipliers, live value visualization, and integrated 
+progress tracking for both video and image-loop rendering.
+
+FEATURES
+========
+• Node-based automation editor (double-click to add, drag to move, right-click to delete)
+• Per-effect-instance automation (indexed by chain position, not shared by name)
+• Per-parameter independent magnitude multiplier (0.0001x to 10000x range)
+• Value-scaled node visualization (size and color reflect value within range)
+• Value-scaled connecting lines (opacity and color scale with frame values)
+• Hover guideline with dual value labels (inside canvas + right edge)
+• Proper float precision display (e.g., 0.01, 256.0, not truncated)
+• Value normalization on 1000-frame timeline (authored curves span full render)
+• Automation applied to all three render paths: preview, video, image-loop
+
+FIXES
+=====
+• Fixed automation not affecting renders (frame 0 hardcode removed, uses slider position)
+• Fixed per-instance automation sharing between same-effect types
+• Fixed image-loop export ignoring automation (now runs through GUI render path)
+• Fixed automation range calculation drifting when preview altered parameter values
+  (now captures and stores original parameter base value per parameter)
+• Fixed node grabbing broken by double-click logic (nodes now take priority over timing)
+• Dragging now works near canvas edges (clamped to boundaries)
+
+PROGRESS TRACKING
+=================
+• Added visual progress bar for both video and image-loop rendering
+• Audio muxing now counts as final progress phase (0-90% render, 90-100% mux)
+• Frame-by-frame updates during processing
+• Progress bar hides on completion
+
+IMPLEMENTATION DETAILS
+======================
+API additions:
+  - AutomationWindow: getTotalFrames(), setTotalFrames()
+  - GUI: mapRenderFrameToAutomationFrame() for timeline normalization
+  - GUI: renderImageLoopWithAutomation() for threaded image-loop + automation
+  - GUI: processImageLoopThreaded() for background image-loop processing
+
+Architecture improvements:
+  - Image-loop processing moved to background thread (same as video)
+  - Shared progress counters (currentProcessingFrame, totalProcessingFrames) 
+  - Stored parameter base values prevent range drift across previews
+  - SFML 3.x compatibility fixes (Vector2f, uint8_t, FloatRect.size)
+
+FILES CHANGED
+=============
+  include/AutomationWindow.h
+  src/AutomationWindow.cpp
+  include/GUI.h
+  src/GUI.cpp
+
+BUILD
+=====
+✓ Compiles cleanly (warnings only, no errors)
+✓ All three render paths tested and working
+✓ Node interaction verified
+✓ Progress bar updates live during render
+
+BACKWARDS COMPATIBILITY
+=======================
+✓ Existing effect chains load and work unchanged
+✓ Parameters with no automation behave as before
+✓ All SFML 3.x and TGUI 1.x requirements maintained
