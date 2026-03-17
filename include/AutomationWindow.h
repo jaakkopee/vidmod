@@ -15,6 +15,8 @@ private:
     
     // Automation data - indexed by effect instance index in the chain
     std::map<int, std::map<std::string, ParameterAutomation>> effectAutomations;
+    // Range multiplier index for each parameter (0-8)
+    std::map<int, std::map<std::string, int>> parameterRangeIndices;
     int selectedEffectIndex;  // Index of effect instance in the chain (-1 if none)
     std::string selectedParam;
     int totalFrames;

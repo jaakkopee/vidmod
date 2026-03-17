@@ -71,43 +71,14 @@ void AutomationWindow::setupUI() {
         if (paramComboBox->getSelectedItemIndex() >= 0 && selectedEffectIndex >= 0) {
             selectedParam = paramComboBox->getSelectedItem().toStdString();
             
-            // Get current parameter value
-            float currentValue = 1.0f;
-            if (effectChainRef) {
-                const auto& effects = effectChainRef->getEffects();
-                if (selectedEffectIndex < static_cast<int>(effects.size())) {
-                    currentValue = effects[selectedEffectIndex]->getParameter(selectedParam);
-                }
+            // Load saved range index for this parameter, or default to 4 ("1x")
+            int savedRangeIndex = 4;  // Default multiplier
+            if (parameterRangeIndices[selectedEffectIndex].count(selectedParam) > 0) {
+                savedRangeIndex = parameterRangeIndices[selectedEffectIndex][selectedParam];
             }
             
-            // Get multiplier from range selector
-            int rangeIndex = rangeComboBox->getSelectedItemIndex();
-            float multiplier = 1.0f;
-            switch (rangeIndex) {
-                case 0: multiplier = 0.0001f; break;  // /10000
-                case 1: multiplier = 0.001f; break;   // /1000
-                case 2: multiplier = 0.01f; break;    // /100
-                case 3: multiplier = 0.1f; break;     // /10
-                case 4: multiplier = 1.0f; break;     // 1
-                case 5: multiplier = 10.0f; break;    // *10
-                case 6: multiplier = 100.0f; break;   // *100
-                case 7: multiplier = 1000.0f; break;  // *1000
-                case 8: multiplier = 10000.0f; break; // *10000
-            }
-            
-            float minVal = 0.0f;
-            float maxVal = currentValue * multiplier;
-            
-            // Initialize automation with calculated range if not exists
-            if (selectedEffectIndex >= 0 && effectAutomations[selectedEffectIndex].count(selectedParam) == 0) {
-                effectAutomations[selectedEffectIndex][selectedParam] = ParameterAutomation(minVal, maxVal);
-            }
-            
-            // Update range label to show current automation range
-            if (selectedEffectIndex >= 0 && effectAutomations[selectedEffectIndex].count(selectedParam) > 0) {
-                auto& automation = effectAutomations[selectedEffectIndex][selectedParam];
-                rangeLabel->setText("Range: " + tgui::String(automation.getMinValue()) + " - " + tgui::String(automation.getMaxValue()));
-            }
+            // Set the range selector to the saved index (will trigger its handler)
+            rangeComboBox->setSelectedItemByIndex(savedRangeIndex);
         }
     });
     gui.add(paramComboBox);
@@ -132,6 +103,11 @@ void AutomationWindow::setupUI() {
     rangeComboBox->addItem("*10000");
     rangeComboBox->setSelectedItemByIndex(4); // Default to 1
     rangeComboBox->onItemSelect([this](int index) {
+        // Save this range index for the current parameter
+        if (selectedEffectIndex >= 0 && !selectedParam.empty()) {
+            parameterRangeIndices[selectedEffectIndex][selectedParam] = index;
+        }
+        
         // Get current parameter value if parameter is selected
         float currentValue = 1.0f;
         if (effectChainRef && selectedEffectIndex >= 0 && !selectedParam.empty()) {
@@ -198,6 +174,7 @@ void AutomationWindow::setupUI() {
     selectedKeyframe = -1;
     hoveredKeyframe = -1;
     selectedEffectIndex = -1;
+    parameterRangeIndices.clear();
 }
 
 void AutomationWindow::open(EffectChain& chain) {
