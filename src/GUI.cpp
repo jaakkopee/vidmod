@@ -289,6 +289,16 @@ void GUI::setupUI() {
     statusLabel->setPosition("61%", "91%");
     statusLabel->setTextSize(14);
     mainPanel->add(statusLabel);
+
+    // Processing progress bar for image/video rendering
+    processingProgressBar = tgui::ProgressBar::create();
+    processingProgressBar->setSize("38%", "2.5%");
+    processingProgressBar->setPosition("61%", "88%");
+    processingProgressBar->setMinimum(0);
+    processingProgressBar->setMaximum(100);
+    processingProgressBar->setValue(0);
+    processingProgressBar->setVisible(false);
+    mainPanel->add(processingProgressBar);
 }
 
 void GUI::addEffectToChain(const std::string& effectName) {
@@ -954,19 +964,13 @@ void GUI::processImageLoop() {
             float fps = std::stof(fpsStr);
             
             gui.remove(paramDialog);
-            
-            statusLabel->setText("Processing image loop...");
-            
+
             // Use playlist audio if available, otherwise use VideoProcessor's audio
             AudioBuffer* audioToUse = audioPlaylist.getAudioBuffer() ? 
                                      audioPlaylist.getAudioBuffer() : 
                                      videoProcessor.getAudioBuffer();
-            
-            if (renderImageLoopWithAutomation(outputPath, duration, fps, audioToUse)) {
-                statusLabel->setText("Image loop saved: " + outputPath.substr(outputPath.find_last_of("/\\") + 1));
-            } else {
-                statusLabel->setText("Failed to process image loop");
-            }
+
+            processImageLoopThreaded(outputPath, duration, fps, audioToUse);
         } catch (const std::exception& e) {
             statusLabel->setText("Error: Invalid input values");
             gui.remove(paramDialog);
@@ -998,6 +1002,9 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
     }
 
     const int frameCount = std::max(1, static_cast<int>(std::lround(duration * fps)));
+    const bool hasAudioMuxStep = (audioToUse != nullptr);
+    totalProcessingFrames = frameCount + (hasAudioMuxStep ? 1 : 0);
+    currentProcessingFrame = 0;
     syncAutomationTimeline(fps, audioToUse, duration);
 
     cv::VideoWriter writer(outputPath,
@@ -1015,6 +1022,10 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
     }
 
     for (int frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
+        if (shouldStopProcessing) {
+            break;
+        }
+
         if (audioToUse) {
             size_t audioPos = static_cast<size_t>((static_cast<double>(frameIndex) / frameCount) * audioToUse->size());
             audioToUse->setIndex(audioPos);
@@ -1023,13 +1034,26 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
         applyAutomationAtFrame(mapRenderFrameToAutomationFrame(frameIndex, frameCount));
         cv::Mat processedFrame = effectChain.applyEffects(loadedImage.clone(), audioToUse, fps);
         writer.write(processedFrame);
+        currentProcessingFrame = frameIndex + 1;
+
+        if ((frameIndex + 1) % 5 == 0) {
+            std::lock_guard<std::mutex> lock(previewMutex);
+            latestProcessedFrame = processedFrame.clone();
+        }
     }
 
     writer.release();
 
+    if (shouldStopProcessing) {
+        return false;
+    }
+
     if (!audioToUse) {
         return true;
     }
+
+    // Keep progress one step short while muxing runs.
+    currentProcessingFrame = frameCount;
 
     std::string tempAudioPath = outputPath + ".temp_audio.wav";
     if (!audioToUse->saveToWAV(tempAudioPath)) {
@@ -1049,6 +1073,9 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
         "-disposition:a:0 default \"" + outputPath + "\"";
     int result = system(ffmpegCmd.c_str());
 
+    // Mark muxing step complete.
+    currentProcessingFrame = frameCount + 1;
+
     remove(tempVideoPath.c_str());
     remove(tempAudioPath.c_str());
 
@@ -1057,6 +1084,34 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
     }
 
     return true;
+}
+
+void GUI::processImageLoopThreaded(const std::string& outputPath, float duration, float fps, AudioBuffer* audioToUse) {
+    // Stop any existing processing thread
+    if (processingThread && processingThread->joinable()) {
+        shouldStopProcessing = true;
+        processingThread->join();
+    }
+
+    shouldStopProcessing = false;
+    isProcessing = true;
+    currentProcessingFrame = 0;
+    totalProcessingFrames = std::max(1, static_cast<int>(std::lround(duration * fps)));
+
+    statusLabel->setText("Processing image loop...");
+
+    processingThread = std::make_unique<std::thread>([this, outputPath, duration, fps, audioToUse]() {
+        try {
+            bool ok = renderImageLoopWithAutomation(outputPath, duration, fps, audioToUse);
+            if (!ok && !shouldStopProcessing) {
+                std::cerr << "Image loop processing failed for output: " << outputPath << std::endl;
+            }
+            isProcessing = false;
+        } catch (const std::exception& e) {
+            std::cerr << "Image loop processing error: " << e.what() << std::endl;
+            isProcessing = false;
+        }
+    });
 }
 
 void GUI::generatePreview() {
@@ -1386,7 +1441,8 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                 std::cout << "Target frames: " << targetFrames << std::endl;
             }
             
-            totalProcessingFrames = targetFrames;
+            const bool hasAudioMuxStep = (audioToUse != nullptr);
+            totalProcessingFrames = targetFrames + (hasAudioMuxStep ? 1 : 0);
             
             std::cout << "Creating VideoWriter for " << targetFrames << " frames at " << fps << " fps" << std::endl;
             std::cout << "Output path: " << outputPath << std::endl;
@@ -1448,6 +1504,8 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
             
             // Mux audio if available
             if (audioToUse && !shouldStopProcessing) {
+                // Keep one final step reserved for muxing.
+                currentProcessingFrame = targetFrames;
                 std::cout << "Starting audio muxing process..." << std::endl;
                 std::cout << "Audio buffer size: " << audioToUse->size() << " samples" << std::endl;
                 std::string tempAudioPath = outputPath + ".temp_audio.wav";
@@ -1475,6 +1533,7 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                         } else {
                             std::cout << "FFmpeg muxing completed successfully" << std::endl;
                         }
+                        currentProcessingFrame = targetFrames + 1;
                         std::cout << "Removing temp video: " << tempVideoPath << std::endl;
                         remove(tempVideoPath.c_str());
                     } else {
@@ -1521,11 +1580,26 @@ void GUI::updateProcessingProgress() {
             int percentage = (100 * current) / total;
             statusLabel->setText("Processing: " + std::to_string(current) + "/" + 
                                std::to_string(total) + " (" + std::to_string(percentage) + "%)");
+            if (processingProgressBar) {
+                processingProgressBar->setVisible(true);
+                processingProgressBar->setMinimum(0);
+                processingProgressBar->setMaximum(total);
+                processingProgressBar->setValue(current);
+            }
+        } else if (processingProgressBar) {
+            processingProgressBar->setVisible(true);
+            processingProgressBar->setMinimum(0);
+            processingProgressBar->setMaximum(100);
+            processingProgressBar->setValue(0);
         }
     } else if (processingThread && processingThread->joinable()) {
         // Processing just finished
         processingThread->join();
         processingThread.reset();
+
+        if (processingProgressBar) {
+            processingProgressBar->setVisible(false);
+        }
         
         if (shouldStopProcessing) {
             statusLabel->setText("Processing stopped");

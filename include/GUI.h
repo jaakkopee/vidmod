@@ -34,6 +34,7 @@ private:
     tgui::Button::Ptr previewButton;
     tgui::Button::Ptr processButton;
     tgui::Label::Ptr statusLabel;
+    tgui::ProgressBar::Ptr processingProgressBar;
     tgui::Slider::Ptr audioPositionSlider;
     tgui::Label::Ptr audioPositionLabel;
     tgui::CheckBox::Ptr verboseCheckbox;
@@ -79,6 +80,7 @@ private:
     void generatePreview();
     void processVideo();
     void processImageLoop();
+    void processImageLoopThreaded(const std::string& outputPath, float duration, float fps, AudioBuffer* audioToUse);
     bool renderImageLoopWithAutomation(const std::string& outputPath, float duration, float fps, AudioBuffer* audioToUse);
     void updatePreview(const cv::Mat& frame);
     void processVideoThreaded(const std::string& outputPath, float duration, AudioBuffer* audioToUse);
