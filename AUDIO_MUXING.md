@@ -1,4 +1,4 @@
-# Audio Muxing in FFTVidMod
+# Audio Muxing in VidMod
 
 ## Overview
 The output video now automatically includes the audio that was used to modulate the video effects.

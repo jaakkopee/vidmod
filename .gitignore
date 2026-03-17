@@ -24,7 +24,7 @@ Makefile
 *.exe
 *.out
 *.app
-FFTVidMod
+VidMod
 
 # IDE
 .vscode/

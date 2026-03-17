@@ -303,7 +303,7 @@ make
 ## Project Structure
 
 ```
-fftvidmodcpp/
+vidmod/
 ├── CMakeLists.txt
 ├── README.md
 ├── include/
@@ -352,4 +352,4 @@ fftvidmodcpp/
 
 ## Credits
 
-Based on the Python `fftvidmod2.py` script, converted to C++ with a modern GUI interface.
+Based on the Python `fftvidmod2.py` script, converted to C++ with a modern GUI interface for VidMod.

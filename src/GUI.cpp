@@ -1101,11 +1101,15 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
     // Mark muxing step complete.
     currentProcessingFrame = frameCount + 1;
 
-    remove(tempVideoPath.c_str());
     remove(tempAudioPath.c_str());
 
     if (result != 0) {
         std::cerr << "FFmpeg muxing failed with code: " << result << std::endl;
+        if (rename(tempVideoPath.c_str(), outputPath.c_str()) != 0) {
+            std::cerr << "Failed to restore original video after mux failure. Error: " << strerror(errno) << std::endl;
+        }
+    } else {
+        remove(tempVideoPath.c_str());
     }
 
     return true;
@@ -1555,12 +1559,15 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                         
                         if (result != 0) {
                             std::cerr << "FFmpeg muxing failed with code: " << result << std::endl;
+                            if (rename(tempVideoPath.c_str(), outputPath.c_str()) != 0) {
+                                std::cerr << "Failed to restore original video after mux failure. Error: " << strerror(errno) << std::endl;
+                            }
                         } else {
                             std::cout << "FFmpeg muxing completed successfully" << std::endl;
+                            std::cout << "Removing temp video: " << tempVideoPath << std::endl;
+                            remove(tempVideoPath.c_str());
                         }
                         currentProcessingFrame = targetFrames + 1;
-                        std::cout << "Removing temp video: " << tempVideoPath << std::endl;
-                        remove(tempVideoPath.c_str());
                     } else {
                         std::cerr << "Failed to rename video file. Error: " << strerror(errno) << std::endl;
                     }

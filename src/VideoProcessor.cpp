@@ -250,16 +250,18 @@ bool VideoProcessor::saveProcessedVideo(const std::string& outputPath, EffectCha
         std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
         int result = system(ffmpegCmd.c_str());
         
-        // Clean up temporary files
-        remove(tempVideoPath.c_str());
+        // Clean up temporary audio file regardless of mux result
         remove(tempAudioPath.c_str());
-        
+
         if (result != 0) {
             std::cerr << "Warning: FFmpeg muxing failed. Video saved without audio." << std::endl;
             // Restore the video-only file if FFmpeg failed
-            rename(tempVideoPath.c_str(), outputPath.c_str());
+            if (rename(tempVideoPath.c_str(), outputPath.c_str()) != 0) {
+                std::cerr << "Warning: Could not restore original video after mux failure" << std::endl;
+            }
         } else {
             std::cout << "Audio successfully muxed into video!" << std::endl;
+            remove(tempVideoPath.c_str());
         }
     }
     
@@ -368,16 +370,18 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
         std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
         int result = system(ffmpegCmd.c_str());
         
-        // Clean up temporary files
-        remove(tempVideoPath.c_str());
+        // Clean up temporary audio file regardless of mux result
         remove(tempAudioPath.c_str());
-        
+
         if (result != 0) {
             std::cerr << "Warning: FFmpeg muxing failed. Video saved without audio." << std::endl;
             // Restore the video-only file if FFmpeg failed
-            rename(tempVideoPath.c_str(), outputPath.c_str());
+            if (rename(tempVideoPath.c_str(), outputPath.c_str()) != 0) {
+                std::cerr << "Warning: Could not restore original video after mux failure" << std::endl;
+            }
         } else {
             std::cout << "Audio successfully muxed into video!" << std::endl;
+            remove(tempVideoPath.c_str());
         }
     }
     
@@ -483,16 +487,18 @@ bool VideoProcessor::processImageLoop(const std::string& imagePath, const std::s
         std::cout << "Running FFmpeg: " << ffmpegCmd << std::endl;
         int result = system(ffmpegCmd.c_str());
         
-        // Clean up temporary files
-        remove(tempVideoPath.c_str());
+        // Clean up temporary audio file regardless of mux result
         remove(tempAudioPath.c_str());
-        
+
         if (result != 0) {
             std::cerr << "Warning: FFmpeg muxing failed. Video saved without audio." << std::endl;
             // Restore the video-only file if FFmpeg failed
-            rename(tempVideoPath.c_str(), outputPath.c_str());
+            if (rename(tempVideoPath.c_str(), outputPath.c_str()) != 0) {
+                std::cerr << "Warning: Could not restore original video after mux failure" << std::endl;
+            }
         } else {
             std::cout << "Audio successfully muxed into video!" << std::endl;
+            remove(tempVideoPath.c_str());
         }
     }
     

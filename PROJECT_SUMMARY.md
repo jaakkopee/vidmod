@@ -1,4 +1,4 @@
-# Project Summary: FFT Video Modulator C++
+# Project Summary: VidMod C++
 
 ## Overview
 Successfully converted Python `fftvidmod2.py` to a modern C++ application with a graphical user interface.
@@ -45,7 +45,7 @@ Built with TGUI on SFML:
 ## Project Structure
 
 ```
-fftvidmodcpp/
+vidmod/
 ├── CMakeLists.txt          # Build configuration
 ├── README.md               # Full documentation
 ├── QUICKSTART.md          # 5-minute getting started
@@ -120,7 +120,7 @@ fftvidmodcpp/
 
 # Run
 cd build/bin
-./FFTVidMod
+./VidMod
 ```
 
 ### Detailed Steps
