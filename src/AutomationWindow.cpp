@@ -160,7 +160,12 @@ void AutomationWindow::setupUI() {
         }
         
         float minVal = 0.0f;
-        float maxVal = baseValue * multiplier;
+        float baseMagnitude = std::abs(baseValue);
+        if (baseMagnitude < 1e-6f) {
+            // Parameters that default to zero (e.g. feedback) still need a usable range.
+            baseMagnitude = 1.0f;
+        }
+        float maxVal = baseMagnitude * multiplier;
         
         // Always update the range label
         rangeLabel->setText("Range: " + tgui::String(minVal) + " - " + tgui::String(maxVal));
