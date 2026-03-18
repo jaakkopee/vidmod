@@ -175,6 +175,8 @@ void GUI::setupUI() {
     effectList->addItem("CircleQuilt");
     effectList->addItem("EdgeInk");
     effectList->addItem("CAGlow");
+    effectList->addItem("BitplaneReactor");
+    effectList->addItem("MoldTrails");
     effectList->addItem("NeuralTile");
     effectList->addItem("NeuralCircle");
     leftPanel->add(effectList);
@@ -440,6 +442,10 @@ void GUI::addEffectToChain(const std::string& effectName) {
         effect = std::make_shared<EdgeInkEffect>();
     } else if (effectName == "CAGlow") {
         effect = std::make_shared<CAGlowEffect>();
+    } else if (effectName == "BitplaneReactor") {
+        effect = std::make_shared<BitplaneReactorEffect>();
+    } else if (effectName == "MoldTrails") {
+        effect = std::make_shared<MoldTrailsEffect>();
     } else if (effectName == "NeuralTile") {
         effect = std::make_shared<NeuralTileEffect>();
     } else if (effectName == "NeuralCircle") {
@@ -741,7 +747,10 @@ void GUI::loadImageFile() {
             // Show preview of the loaded image with effects applied
             cv::Mat previewFrame = loadedImage.clone();
             // If there are effects, apply them; otherwise show the original image
-            cv::Mat processedFrame = effectChain.applyEffects(previewFrame, videoProcessor.getAudioBuffer(), 30.0f);
+            AudioBuffer* previewAudio = audioPlaylist.getAudioBuffer() ?
+                                       audioPlaylist.getAudioBuffer() :
+                                       videoProcessor.getAudioBuffer();
+            cv::Mat processedFrame = effectChain.applyEffects(previewFrame, previewAudio, 30.0f);
             updatePreview(processedFrame);
             
             statusLabel->setText("Image loaded (preview shown). Add effects and click 'Process Video' to render.");

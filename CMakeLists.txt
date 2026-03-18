@@ -52,6 +52,8 @@ set(SOURCES
     src/CircleQuiltEffect.cpp
     src/EdgeInkEffect.cpp
     src/CAGlowEffect.cpp
+    src/BitplaneReactorEffect.cpp
+    src/MoldTrailsEffect.cpp
     src/NeuralTileEffect.cpp
     src/NeuralCircleEffect.cpp
     src/EffectChain.cpp

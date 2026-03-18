@@ -8,6 +8,8 @@
 #include "CircleQuiltEffect.h"
 #include "EdgeInkEffect.h"
 #include "CAGlowEffect.h"
+#include "BitplaneReactorEffect.h"
+#include "MoldTrailsEffect.h"
 #include <iostream>
 #include <algorithm>
 #include <fstream>
@@ -196,6 +198,10 @@ bool EffectChain::fromJsonString(const std::string& jsonStr) {
                 effect = std::make_shared<EdgeInkEffect>();
             } else if (name == "CAGlow") {
                 effect = std::make_shared<CAGlowEffect>();
+            } else if (name == "BitplaneReactor") {
+                effect = std::make_shared<BitplaneReactorEffect>();
+            } else if (name == "MoldTrails") {
+                effect = std::make_shared<MoldTrailsEffect>();
             } else {
                 std::cerr << "Unknown effect type: " << name << std::endl;
                 continue;

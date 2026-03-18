@@ -14,6 +14,8 @@
 #include "CircleQuiltEffect.h"
 #include "EdgeInkEffect.h"
 #include "CAGlowEffect.h"
+#include "BitplaneReactorEffect.h"
+#include "MoldTrailsEffect.h"
 #include "AudioPlaylist.h"
 #include "AutomationWindow.h"
 #include <memory>
