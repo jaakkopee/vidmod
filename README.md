@@ -1,4 +1,4 @@
-# VidMod
+# VidMod -- A Video Modulator
 
 A C++ application for building chained video effects driven by image processing, fractal rendering, neighborhood-state updates, and audio analysis. VidMod provides a GUI for assembling effect chains, previewing frames, and rendering synchronized output from video, still images, and audio.
 
