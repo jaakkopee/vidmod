@@ -93,7 +93,7 @@ int runFfmpegWithProgressPipe(const std::string& ffmpegCommand,
 }
 }
 
-GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), showingPreview(false), isProcessing(false), isAudioMuxing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), currentDisplayFrame(0) {
+GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), renderRangeStart(0.0f), renderRangeEnd(1.0f), showingPreview(false), isProcessing(false), isAudioMuxing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), currentDisplayFrame(0) {
     automationWindow = std::make_unique<AutomationWindow>(1000);
     setupUI();
 }
@@ -345,10 +345,50 @@ void GUI::setupUI() {
         }
     });
     middlePanel->add(audioPositionSlider);
-    
+
+    // Render range slider
+    auto renderRangeHeaderLabel = tgui::Label::create("Render Range:");
+    renderRangeHeaderLabel->setPosition("5%", "82%");
+    renderRangeHeaderLabel->setTextSize(12);
+    middlePanel->add(renderRangeHeaderLabel);
+
+    renderRangeLabel = tgui::Label::create("0% - 100%");
+    renderRangeLabel->setPosition("48%", "82%");
+    renderRangeLabel->setTextSize(12);
+    middlePanel->add(renderRangeLabel);
+
+    renderRangeSlider = tgui::RangeSlider::create(0.0f, 100.0f);
+    renderRangeSlider->setSize("90%", "4%");
+    renderRangeSlider->setPosition("5%", "85%");
+    renderRangeSlider->setSelectionStart(0.0f);
+    renderRangeSlider->setSelectionEnd(100.0f);
+    renderRangeSlider->onRangeChange([this](float start, float end) {
+        renderRangeStart = start / 100.0f;
+        renderRangeEnd   = end   / 100.0f;
+
+        AudioBuffer* activeAudio = audioPlaylist.getAudioBuffer() ?
+                                   audioPlaylist.getAudioBuffer() :
+                                   videoProcessor.getAudioBuffer();
+        if (activeAudio && activeAudio->getSampleRate() > 0) {
+            float totalDur = static_cast<float>(activeAudio->size()) / activeAudio->getSampleRate();
+            float startTime = renderRangeStart * totalDur;
+            float endTime   = renderRangeEnd   * totalDur;
+            auto fmtTime = [](float t) {
+                return std::to_string(static_cast<int>(t)) + "." +
+                       std::to_string(static_cast<int>(t * 10) % 10) + "s";
+            };
+            renderRangeLabel->setText(fmtTime(startTime) + " - " + fmtTime(endTime));
+        } else {
+            renderRangeLabel->setText(std::to_string(static_cast<int>(start)) +
+                                      "% - " +
+                                      std::to_string(static_cast<int>(end)) + "%");
+        }
+    });
+    middlePanel->add(renderRangeSlider);
+
     previewButton = tgui::Button::create("Preview Frame");
     previewButton->setSize("90%", "5%");
-    previewButton->setPosition("5%", "82%");
+    previewButton->setPosition("5%", "90%");
     previewButton->onPress([this]() { 
         std::cout << "Preview button clicked!" << std::endl;
         generatePreview(); 
@@ -357,7 +397,7 @@ void GUI::setupUI() {
     
     verboseCheckbox = tgui::CheckBox::create("Verbose Progress");
     verboseCheckbox->setSize(15, 15);
-    verboseCheckbox->setPosition("5%", "88%");
+    verboseCheckbox->setPosition("5%", "96%");
     verboseCheckbox->setChecked(true);
     verboseCheckbox->onChange([this](bool checked) {
         videoProcessor.setVerbose(checked);
@@ -1155,8 +1195,13 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
         return false;
     }
 
+    // Capture render range for this render pass
+    const float rsStart = renderRangeStart;
+    const float rsRange = std::max(0.001f, renderRangeEnd - renderRangeStart);
+
     if (audioToUse) {
-        audioToUse->setIndex(0);
+        size_t audioStart = static_cast<size_t>(rsStart * audioToUse->size());
+        audioToUse->setIndex(audioStart);
     }
 
     for (int frameIndex = 0; frameIndex < frameCount; ++frameIndex) {
@@ -1165,7 +1210,8 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
         }
 
         if (audioToUse) {
-            size_t audioPos = static_cast<size_t>((static_cast<double>(frameIndex) / frameCount) * audioToUse->size());
+            double progress = static_cast<double>(frameIndex) / frameCount;
+            size_t audioPos = static_cast<size_t>((rsStart + progress * rsRange) * audioToUse->size());
             audioToUse->setIndex(audioPos);
         }
 
@@ -1615,9 +1661,10 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
             
             std::cout << "VideoWriter opened successfully" << std::endl;
             
-            // Reset audio buffer
+            // Reset audio buffer to render range start
             if (audioToUse) {
-                audioToUse->setIndex(0);
+                size_t audioStart = static_cast<size_t>(renderRangeStart * audioToUse->size());
+                audioToUse->setIndex(audioStart);
             }
             
             // Process frames using VideoBuffer (automatic looping)

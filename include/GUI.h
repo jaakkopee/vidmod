@@ -42,6 +42,8 @@ private:
     tgui::ProgressBar::Ptr processingProgressBar;
     tgui::Slider::Ptr audioPositionSlider;
     tgui::Label::Ptr audioPositionLabel;
+    tgui::RangeSlider::Ptr renderRangeSlider;
+    tgui::Label::Ptr renderRangeLabel;
     tgui::CheckBox::Ptr verboseCheckbox;
     
     // Automation window
@@ -50,6 +52,8 @@ private:
     sf::Texture previewTexture;
     sf::Sprite previewSprite;
     float currentAudioPosition;
+    float renderRangeStart;
+    float renderRangeEnd;
     bool showingPreview;
     cv::Mat currentPreviewFrame;
     std::string currentImagePath;
