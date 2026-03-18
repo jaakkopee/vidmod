@@ -10,6 +10,12 @@ The `AudioPlaylist` class manages multiple audio files and combines them into a 
 - **Automatic resampling**: All tracks are resampled to a common sample rate
 - **Efficient buffer management**: Uses the existing `AudioBuffer` infrastructure
 
+## Notes for Effect Processing
+
+- Playlist audio can be used for both preview and full render paths.
+- When a playlist is available, it takes precedence over single-file media audio.
+- Audio-reactive effects (including FFT, AudioColor, CAGlow, BitplaneReactor, and MoldTrails) consume synchronized slices from this shared buffer.
+
 ## Example Usage
 
 ```cpp

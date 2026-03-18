@@ -61,6 +61,22 @@ cd build/bin
    - Enter output path (e.g., `output.mp4`)
    - Wait for processing to complete
 
+## Try the New Effects Quickly
+
+Recently added effects you can test immediately:
+
+- `CircleQuilt`: Mosaic circles with soft blending
+- `EdgeInk`: Stylized edge drawing with ink tint
+- `CAGlow`: Cellular-automaton based glow map
+- `BitplaneReactor`: Wolfram CA on image bitplanes
+- `MoldTrails`: Agent trail simulation with persistent state
+
+Suggested first-pass values:
+
+- BitplaneReactor: `wolfram_rule=110`, `bit_lo=2`, `bit_count=2`, `blend=0.6`
+- CAGlow: `iterations=5`, `state_count=6`, `sim_scale=0.35`, `blend=0.55`
+- EdgeInk: `edge_threshold=72`, `blur_size=5`, `blend=0.55`
+
 ## Example: Simple Audio-Reactive Video
 
 ```
@@ -94,6 +110,13 @@ cd build/bin
 - Reduce video resolution if needed
 - Use fewer effects in the chain
 - Lower iteration counts for Diffuse effect
+- Lower `sim_scale` for CAGlow and MoldTrails
+- Lower `agent_count` for MoldTrails
+
+### "Audio does not seem to affect effects"
+- Ensure an audio file or playlist track is loaded
+- Increase each effect's `audio_gain` toward `0.8 - 1.2`
+- Use music with clear transients (kicks/snares) for best response
 
 ## Tips for Best Results
 

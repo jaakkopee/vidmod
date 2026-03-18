@@ -3,6 +3,8 @@
 ## Overview
 The output video now automatically includes the audio that was used to modulate the video effects.
 
+This applies to both video processing and image-loop rendering. If a playlist is loaded, playlist audio is used; otherwise, the currently loaded media audio buffer is used.
+
 ## How It Works
 
 When you process a video or image loop with audio:
@@ -36,6 +38,11 @@ When you process a video or image loop with audio:
 - Video is generated from a static image at specified FPS
 - Audio duration determines the video length
 - Audio is perfectly synced with the generated frames
+
+### Audio-Reactive Effects Notes
+- Effects read one audio slice per rendered frame, synchronized by FPS
+- All effects in the chain read the same slice for that frame
+- This keeps audio-driven parameters aligned across stacked effects
 
 ## Error Handling
 

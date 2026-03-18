@@ -12,13 +12,21 @@ Successfully converted Python `fftvidmod2.py` to a modern C++ application with a
 - **Video Processing**: OpenCV-based frame manipulation
 
 ### 2. Available Effects
-All major effects from the Python version:
+Current effect set in the C++ application:
 
 - **FFT Effect**: Frequency-based color modulation (bass → blue, mid → green, treble → red)
+- **AudioColor Effect**: Multi-mode audio-reactive color mapping
 - **Shadow Effect**: Local minima detection for shadow enhancement
-- **Light Effect**: Local maxima detection for highlight enhancement  
-- **Diffuse Effect**: Iterative color diffusion across neighboring pixels
-- **Audio Color Effect**: Direct audio-reactive color mapping
+- **Light Effect**: Local maxima detection for highlight enhancement
+- **Diffuse Effect**: Iterative spatial diffusion
+- **Fractal Effect**: Julia-set style fractal compositing
+- **CircleQuilt Effect**: Grid-based circular mosaic stylization
+- **EdgeInk Effect**: Sobel-driven ink edge compositing
+- **CAGlow Effect**: Low-res cellular automaton glow synthesis
+- **BitplaneReactor Effect**: Wolfram CA over selected image bitplanes
+- **MoldTrails Effect**: Persistent agent-based slime-trail simulation
+- **NeuralTile Effect**: Tile-based neighborhood activation renderer
+- **NeuralCircle Effect**: Circle-based neighborhood activation renderer
 
 ### 3. GUI Features
 Built with TGUI on SFML:
@@ -64,6 +72,14 @@ vidmod/
 │   ├── LightEffect.h       # Light effect
 │   ├── DiffuseEffect.h     # Diffuse effect
 │   ├── AudioColorEffect.h  # Audio color effect
+│   ├── FractalEffect.h     # Fractal compositing
+│   ├── CircleQuiltEffect.h # Circular mosaic effect
+│   ├── EdgeInkEffect.h     # Ink-style edge effect
+│   ├── CAGlowEffect.h      # Cellular automaton glow
+│   ├── BitplaneReactorEffect.h # Bitplane CA reactor
+│   ├── MoldTrailsEffect.h  # Agent-based trail simulation
+│   ├── NeuralTileEffect.h  # Tile neighborhood renderer
+│   ├── NeuralCircleEffect.h # Circle neighborhood renderer
 │   ├── EffectChain.h       # Effect chain manager
 │   ├── VideoProcessor.h    # Video loading & processing
 │   └── GUI.h              # GUI interface
@@ -79,6 +95,14 @@ vidmod/
     ├── LightEffect.cpp      # Light implementation
     ├── DiffuseEffect.cpp    # Diffuse implementation
     ├── AudioColorEffect.cpp # Audio color implementation
+    ├── FractalEffect.cpp    # Fractal implementation
+    ├── CircleQuiltEffect.cpp # Circle quilt implementation
+    ├── EdgeInkEffect.cpp    # Edge ink implementation
+    ├── CAGlowEffect.cpp     # Cellular automaton glow
+    ├── BitplaneReactorEffect.cpp # Bitplane reactor implementation
+    ├── MoldTrailsEffect.cpp # Mold trails implementation
+    ├── NeuralTileEffect.cpp # Neural tile implementation
+    ├── NeuralCircleEffect.cpp # Neural circle implementation
     ├── EffectChain.cpp      # Chain management
     ├── VideoProcessor.cpp   # Video I/O
     └── GUI.cpp             # GUI implementation
@@ -139,7 +163,7 @@ See [QUICKSTART.md](QUICKSTART.md) for complete instructions.
 ## Differences from Python Version
 
 ### Implemented
-✅ All major effects (FFT, Shadow, Light, Diffuse, AudioColor)
+✅ Expanded effect library including FFT/AudioColor, morphology, diffusion, fractal, CA, bitplane, and agent-based effects
 ✅ Audio analysis with FFT (3-band and 8-band)
 ✅ Circular buffers for video and audio
 ✅ Effect chaining and composition

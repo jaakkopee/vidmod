@@ -118,6 +118,49 @@ This document is organized by the kind of processing each effect performs, rathe
 
 **Result**: Intense, trippy visual effects.
 
+## Cellular and Pattern-Based Effects
+
+### 12. Bitplane Reactor (Structured Chaos)
+**Single Effect**: BitplaneReactor
+**Parameters**:
+- wolfram_rule: 110
+- bit_lo: 2
+- bit_count: 2
+- sim_scale: 0.5
+- blend: 0.6
+- audio_gain: 0.9
+
+**Result**: Stable geometric-reactive texture that becomes more active on transients.
+
+### 13. Mold Trails (Organic Growth)
+**Single Effect**: MoldTrails
+**Parameters**:
+- agent_count: 4000
+- sensor_angle: 30
+- sensor_dist: 8
+- move_speed: 1.2
+- turn_speed: 0.35
+- decay_rate: 0.06
+- blend: 0.7
+- sim_scale: 0.25
+- audio_gain: 1.0
+
+**Result**: Slime-like path growth with persistent memory and audio-driven turbulence.
+
+### 14. Edge Ink + CA Glow
+**Effect Chain**:
+1. EdgeInk (edge_threshold: 72, blur_size: 5, edge_strength: 1.15, blend: 0.55)
+2. CAGlow (iterations: 5, state_count: 6, sim_scale: 0.35, contrast: 1.25, blend: 0.5)
+
+**Result**: Graphic line-art edges with evolving reactive glow.
+
+### 15. Quilt Reactor Composite
+**Effect Chain**:
+1. CircleQuilt (cells_x: 14, cells_y: 14, radius_scale: 0.92, blend: 0.82)
+2. BitplaneReactor (wolfram_rule: 90, bit_lo: 2, bit_count: 2, blend: 0.45)
+
+**Result**: Mosaic base with CA-driven texture overlays.
+
 ## Tips
 
 1. **Start Simple**: Begin with single effects to understand their behavior
@@ -183,6 +226,11 @@ Recommended starting ranges:
 - Fractal: `0.2 - 1.0`
 - NeuralTile: `0.3 - 1.2`
 - NeuralCircle: `0.3 - 1.2`
+- CircleQuilt: `0.3 - 1.0`
+- EdgeInk: `0.3 - 1.0`
+- CAGlow: `0.4 - 1.2`
+- BitplaneReactor: `0.6 - 1.4`
+- MoldTrails: `0.6 - 1.5`
 
 Quick tuning workflow:
 

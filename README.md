@@ -23,6 +23,11 @@ VidMod is not a single FFT effect processor. The current effects fall into sever
 | Light | Spatial morphology | Dilate image to local maxima, then blend into original |
 | Diffuse | Iterative spatial filtering | Repeated box blur with configurable kernel growth and decay |
 | Fractal | Escape-time fractal rendering | Render Julia set in image space, then blend with source |
+| CircleQuilt | Grid mosaic with radial masks | Sample cell-center color, blend circular quilt over image |
+| EdgeInk | Gradient edge extraction + tint composite | Sobel edge map thresholded into ink-like lines |
+| CAGlow | Discrete cellular automaton glow map | Low-res CA states + structure emphasis + glow compositing |
+| BitplaneReactor | Bitplane Wolfram CA | Run elementary CA on selected image bitplanes, tint active cells |
+| MoldTrails | Agent-based slime simulation | Persistent trail map with steer/deposit/decay dynamics |
 | NeuralTile | Grid-based neighborhood update | Build activation grid, iterate local averaging, render rectangles |
 | NeuralCircle | Grid-based neighborhood update | Build activation grid, iterate local averaging, render circles |
 
@@ -165,6 +170,81 @@ for each pixel (x, y):
 - `cx`, `cy`, `max_iter`
 - `blend`, `input_warp`, `color_source_mix`
 - `audio_depth`, `audio_gain`
+
+### CircleQuilt
+**Type**: Grid-based mosaic sampling
+
+**Operation**:
+- Split the frame into a configurable grid
+- Sample representative color per cell center
+- Build circular masks with soft edges
+- Composite a quilt-like color field over the original frame
+
+**Main parameters**:
+- `cells_x`, `cells_y`
+- `radius_scale`, `edge_softness`
+- `blend`, `audio_gain`
+
+### EdgeInk
+**Type**: Edge extraction + stylized compositing
+
+**Operation**:
+- Blur input to stabilize gradients
+- Compute Sobel edge magnitude
+- Threshold and optionally invert edges
+- Composite selected ink tint color over source image where edges are active
+
+**Main parameters**:
+- `edge_threshold`, `blur_size`
+- `edge_strength`, `invert`
+- `ink_r`, `ink_g`, `ink_b`
+- `blend`, `audio_gain`
+
+### CAGlow
+**Type**: Low-resolution discrete cellular automaton + glow
+
+**Operation**:
+- Downsample frame to simulation grid
+- Quantize to CA states and iterate neighborhood transitions
+- Emphasize structure from CA activation and Laplacian energy
+- Blur and upsample activation map, then tint-composite as glow
+
+**Main parameters**:
+- `iterations`, `state_count`, `neighbor_mix`
+- `sim_scale`, `blur_size`, `contrast`
+- `glow_strength`, `blend`
+- `tint_r`, `tint_g`, `tint_b`, `audio_gain`
+
+### BitplaneReactor
+**Type**: Bitplane cellular automaton pattern synthesis
+
+**Operation**:
+- Extract selected grayscale bitplanes
+- Run Wolfram elementary CA row-to-row on each plane
+- Aggregate active states and tint-composite onto the source
+- Audio can modulate blend and dynamic CA behavior
+
+**Main parameters**:
+- `bit_lo`, `bit_count`
+- `wolfram_rule`, `sim_scale`
+- `blend`
+- `tint_r`, `tint_g`, `tint_b`, `audio_gain`
+
+### MoldTrails
+**Type**: Agent-based trail simulation (physarum-style)
+
+**Operation**:
+- Maintain persistent trail map and moving agent population
+- Agents sample left/center/right sensors, steer, move, and deposit trail
+- Diffuse and decay trail field each frame
+- Composite trail intensity back with configurable tint
+
+**Main parameters**:
+- `agent_count`, `sensor_angle`, `sensor_dist`
+- `turn_speed`, `move_speed`
+- `deposit_amount`, `decay_rate`, `blur_size`
+- `sim_scale`, `blend`
+- `tint_r`, `tint_g`, `tint_b`, `audio_gain`
 
 ### NeuralTile
 **Type**: Grid-based iterative neighborhood system

@@ -28,11 +28,23 @@
 
 ## Medium Priority
 
+- [x] **New Effects Implemented**
+  - CircleQuilt
+  - EdgeInk
+  - CAGlow
+  - BitplaneReactor
+  - MoldTrails
+
 - [ ] **Additional Effects**: Port remaining Python algorithms
   - FrameFeedback effect
   - AudioColor8 effect (8-channel version)
   - AudioReactiveShadow (neighborhood size variant)
   - Combined AudioLightShadow effect
+
+- [ ] **Effect Tuning Pass**
+  - Improve audio response consistency in image loop mode
+  - Add optional debug meter for RMS/bass/beat values
+  - Add per-effect "safe defaults" presets
 
 - [ ] **Video Timeline**: Add timeline for scrubbing
   - Seek to specific frame
