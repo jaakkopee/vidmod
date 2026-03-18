@@ -172,6 +172,9 @@ void GUI::setupUI() {
     effectList->addItem("Diffuse");
     effectList->addItem("AudioColor");
     effectList->addItem("Fractal");
+    effectList->addItem("CircleQuilt");
+    effectList->addItem("EdgeInk");
+    effectList->addItem("CAGlow");
     effectList->addItem("NeuralTile");
     effectList->addItem("NeuralCircle");
     leftPanel->add(effectList);
@@ -199,6 +202,21 @@ void GUI::setupUI() {
     leftPanel->add(chainList);
     
     // Chain management buttons (right next to the chain list)
+    auto toggleBypassBtn = tgui::Button::create("✓ Toggle Bypass");
+    toggleBypassBtn->setSize("90%", "4%");
+    toggleBypassBtn->setPosition("5%", "82%");
+    toggleBypassBtn->onPress([this]() { 
+        int selected = chainList->getSelectedItemIndex();
+        if (selected >= 0) {
+            auto effect = effectChain.getEffect(selected);
+            if (effect) {
+                effect->setBypass(!effect->isBypassed());
+                updateChainList();  // Update display to show [BYPASSED] label
+            }
+        }
+    });
+    leftPanel->add(toggleBypassBtn);
+    
     auto removeEffectBtn = tgui::Button::create("Remove Effect");
     removeEffectBtn->setSize("90%", "4%");
     removeEffectBtn->setPosition("5%", "87%");
@@ -416,6 +434,12 @@ void GUI::addEffectToChain(const std::string& effectName) {
         effect = std::make_shared<AudioColorEffect>();
     } else if (effectName == "Fractal") {
         effect = std::make_shared<FractalEffect>();
+    } else if (effectName == "CircleQuilt") {
+        effect = std::make_shared<CircleQuiltEffect>();
+    } else if (effectName == "EdgeInk") {
+        effect = std::make_shared<EdgeInkEffect>();
+    } else if (effectName == "CAGlow") {
+        effect = std::make_shared<CAGlowEffect>();
     } else if (effectName == "NeuralTile") {
         effect = std::make_shared<NeuralTileEffect>();
     } else if (effectName == "NeuralCircle") {
@@ -461,7 +485,12 @@ void GUI::updateChainList() {
     chainList->removeAllItems();
     const auto& effects = effectChain.getEffects();
     for (size_t i = 0; i < effects.size(); ++i) {
-        chainList->addItem(std::to_string(i + 1) + ". " + effects[i]->getName());
+        // Show bypass status in the label
+        std::string label = std::to_string(i + 1) + ". " + effects[i]->getName();
+        if (effects[i]->isBypassed()) {
+            label += " [BYPASSED]";
+        }
+        chainList->addItem(label);
     }
 }
 

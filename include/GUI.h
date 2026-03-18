@@ -11,6 +11,9 @@
 #include "DiffuseEffect.h"
 #include "AudioColorEffect.h"
 #include "FractalEffect.h"
+#include "CircleQuiltEffect.h"
+#include "EdgeInkEffect.h"
+#include "CAGlowEffect.h"
 #include "AudioPlaylist.h"
 #include "AutomationWindow.h"
 #include <memory>

@@ -49,6 +49,9 @@ set(SOURCES
     src/DiffuseEffect.cpp
     src/AudioColorEffect.cpp
     src/FractalEffect.cpp
+    src/CircleQuiltEffect.cpp
+    src/EdgeInkEffect.cpp
+    src/CAGlowEffect.cpp
     src/NeuralTileEffect.cpp
     src/NeuralCircleEffect.cpp
     src/EffectChain.cpp

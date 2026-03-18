@@ -11,14 +11,18 @@ class Effect {
 protected:
     std::string name;
     std::map<std::string, float> parameters;
+    bool bypassed;
 
 public:
-    Effect(const std::string& effectName) : name(effectName) {}
+    Effect(const std::string& effectName) : name(effectName), bypassed(false) {}
     virtual ~Effect() = default;
     
     virtual cv::Mat apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float videoFps) = 0;
     
     std::string getName() const { return name; }
+    
+    void setBypass(bool bypass) { bypassed = bypass; }
+    bool isBypassed() const { return bypassed; }
     
     void setParameter(const std::string& key, float value) {
         parameters[key] = value;

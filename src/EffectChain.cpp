@@ -5,6 +5,9 @@
 #include "DiffuseEffect.h"
 #include "AudioColorEffect.h"
 #include "FractalEffect.h"
+#include "CircleQuiltEffect.h"
+#include "EdgeInkEffect.h"
+#include "CAGlowEffect.h"
 #include <iostream>
 #include <algorithm>
 #include <fstream>
@@ -49,7 +52,10 @@ cv::Mat EffectChain::applyEffects(const cv::Mat& frame, AudioBuffer* audioBuffer
             audioBuffer->setIndex(savedAudioPosition);
         }
         
-        result = effect->apply(result, audioBuffer, videoFps);
+        // Skip bypassed effects
+        if (!effect->isBypassed()) {
+            result = effect->apply(result, audioBuffer, videoFps);
+        }
     }
     
     // After all effects are applied, advance audio position by the samples used for this frame
@@ -184,6 +190,12 @@ bool EffectChain::fromJsonString(const std::string& jsonStr) {
                 effect = std::make_shared<AudioColorEffect>();
             } else if (name == "Fractal") {
                 effect = std::make_shared<FractalEffect>();
+            } else if (name == "CircleQuilt") {
+                effect = std::make_shared<CircleQuiltEffect>();
+            } else if (name == "EdgeInk") {
+                effect = std::make_shared<EdgeInkEffect>();
+            } else if (name == "CAGlow") {
+                effect = std::make_shared<CAGlowEffect>();
             } else {
                 std::cerr << "Unknown effect type: " << name << std::endl;
                 continue;
