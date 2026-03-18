@@ -4,7 +4,7 @@ This document describes some example effect chains you can create in the applica
 
 ## By Algorithm Family
 
-This document is organized by the kind of processing each effect performs, rather than by a vague “basic vs creative” split.
+This document is organized by the kind of processing each effect performs, rather than by a vague "basic vs creative" split.
 
 ## Frequency-Domain Audio Effects
 
