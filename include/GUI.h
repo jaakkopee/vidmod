@@ -3,6 +3,7 @@
 #include <TGUI/TGUI.hpp>
 #include <TGUI/Backend/SFML-Graphics.hpp>
 #include <SFML/Graphics.hpp>
+#include <SFML/Audio.hpp>
 #include "VideoProcessor.h"
 #include "EffectChain.h"
 #include "FFTEffect.h"
@@ -22,6 +23,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <chrono>
 
 class GUI {
 private:
@@ -37,13 +39,16 @@ private:
     tgui::ListBox::Ptr playlistBox;
     tgui::ScrollablePanel::Ptr paramPanel;
     tgui::Button::Ptr previewButton;
+    tgui::Button::Ptr playRangeButton;
     tgui::Button::Ptr processButton;
     tgui::Label::Ptr statusLabel;
+    tgui::Label::Ptr livePreviewStateLabel;
     tgui::ProgressBar::Ptr processingProgressBar;
     tgui::Slider::Ptr audioPositionSlider;
     tgui::Label::Ptr audioPositionLabel;
     tgui::RangeSlider::Ptr renderRangeSlider;
     tgui::Label::Ptr renderRangeLabel;
+    tgui::Button::Ptr stopPreviewButton;
     tgui::CheckBox::Ptr verboseCheckbox;
     
     // Automation window
@@ -66,6 +71,13 @@ private:
     std::atomic<bool> shouldStopProcessing;
     std::atomic<int> currentProcessingFrame;
     std::atomic<int> totalProcessingFrames;
+    std::unique_ptr<std::thread> livePreviewThread;
+    std::atomic<bool> isLivePreviewPlaying;
+    std::atomic<bool> shouldStopLivePreview;
+    std::unique_ptr<sf::SoundBuffer> livePreviewSoundBuffer;
+    std::unique_ptr<sf::Sound> livePreviewSound;
+    std::chrono::steady_clock::time_point livePreviewAudioStartTime;
+    float livePreviewAudioDurationSeconds;
     std::mutex previewMutex;
     cv::Mat latestProcessedFrame;
     int currentDisplayFrame;
@@ -88,6 +100,9 @@ private:
     void saveEffectChain();
     void loadEffectChain();
     void generatePreview();
+    void startLivePreview();
+    void stopLivePreview();
+    void livePreviewLoop();
     void processVideo();
     void processImageLoop();
     void processImageLoopThreaded(const std::string& outputPath, float duration, float fps, AudioBuffer* audioToUse);
@@ -106,6 +121,7 @@ private:
 
 public:
     GUI(sf::RenderWindow& win);
+    ~GUI();
     
     void handleEvent(const sf::Event& event);
     void draw();

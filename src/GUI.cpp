@@ -93,9 +93,18 @@ int runFfmpegWithProgressPipe(const std::string& ffmpegCommand,
 }
 }
 
-GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), renderRangeStart(0.0f), renderRangeEnd(1.0f), showingPreview(false), isProcessing(false), isAudioMuxing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), currentDisplayFrame(0) {
+GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), renderRangeStart(0.0f), renderRangeEnd(1.0f), showingPreview(false), isProcessing(false), isAudioMuxing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), isLivePreviewPlaying(false), shouldStopLivePreview(false), livePreviewAudioDurationSeconds(0.0f), currentDisplayFrame(0) {
     automationWindow = std::make_unique<AutomationWindow>(1000);
     setupUI();
+}
+
+GUI::~GUI() {
+    stopLivePreview();
+
+    if (processingThread && processingThread->joinable()) {
+        shouldStopProcessing = true;
+        processingThread->join();
+    }
 }
 
 void GUI::syncAutomationTimeline(float previewFps, AudioBuffer* activeAudioBuffer, float durationOverride) {
@@ -313,18 +322,18 @@ void GUI::setupUI() {
     
     // Audio position slider
     auto audioTimeLabel = tgui::Label::create("Audio Time:");
-    audioTimeLabel->setPosition("5%", "74%");
+    audioTimeLabel->setPosition("5%", "70%");
     audioTimeLabel->setTextSize(12);
     middlePanel->add(audioTimeLabel);
     
     audioPositionLabel = tgui::Label::create("0.0s");
-    audioPositionLabel->setPosition("75%", "74%");
+    audioPositionLabel->setPosition("75%", "70%");
     audioPositionLabel->setTextSize(12);
     middlePanel->add(audioPositionLabel);
     
     audioPositionSlider = tgui::Slider::create();
     audioPositionSlider->setSize("90%", "4%");
-    audioPositionSlider->setPosition("5%", "77%");
+    audioPositionSlider->setPosition("5%", "73%");
     audioPositionSlider->setMinimum(0);
     audioPositionSlider->setMaximum(100);
     audioPositionSlider->setValue(0);
@@ -348,18 +357,18 @@ void GUI::setupUI() {
 
     // Render range slider
     auto renderRangeHeaderLabel = tgui::Label::create("Render Range:");
-    renderRangeHeaderLabel->setPosition("5%", "82%");
+    renderRangeHeaderLabel->setPosition("5%", "78%");
     renderRangeHeaderLabel->setTextSize(12);
     middlePanel->add(renderRangeHeaderLabel);
 
     renderRangeLabel = tgui::Label::create("0% - 100%");
-    renderRangeLabel->setPosition("48%", "82%");
+    renderRangeLabel->setPosition("48%", "78%");
     renderRangeLabel->setTextSize(12);
     middlePanel->add(renderRangeLabel);
 
     renderRangeSlider = tgui::RangeSlider::create(0.0f, 100.0f);
     renderRangeSlider->setSize("90%", "4%");
-    renderRangeSlider->setPosition("5%", "85%");
+    renderRangeSlider->setPosition("5%", "81%");
     renderRangeSlider->setSelectionStart(0.0f);
     renderRangeSlider->setSelectionEnd(100.0f);
     renderRangeSlider->onRangeChange([this](float start, float end) {
@@ -387,17 +396,37 @@ void GUI::setupUI() {
     middlePanel->add(renderRangeSlider);
 
     previewButton = tgui::Button::create("Preview Frame");
-    previewButton->setSize("90%", "5%");
-    previewButton->setPosition("5%", "90%");
+    previewButton->setSize("90%", "4%");
+    previewButton->setPosition("5%", "86%");
     previewButton->onPress([this]() { 
-        std::cout << "Preview button clicked!" << std::endl;
-        generatePreview(); 
+        generatePreview();
     });
     middlePanel->add(previewButton);
+
+    playRangeButton = tgui::Button::create("Play Range");
+    playRangeButton->setSize("44%", "4%");
+    playRangeButton->setPosition("5%", "91%");
+    playRangeButton->onPress([this]() {
+        startLivePreview();
+    });
+    middlePanel->add(playRangeButton);
+
+    stopPreviewButton = tgui::Button::create("Stop");
+    stopPreviewButton->setSize("44%", "4%");
+    stopPreviewButton->setPosition("51%", "91%");
+    stopPreviewButton->onPress([this]() {
+        stopLivePreview();
+    });
+    middlePanel->add(stopPreviewButton);
+
+    livePreviewStateLabel = tgui::Label::create("Live: Stopped");
+    livePreviewStateLabel->setPosition("5%", "95%");
+    livePreviewStateLabel->setTextSize(11);
+    middlePanel->add(livePreviewStateLabel);
     
     verboseCheckbox = tgui::CheckBox::create("Verbose Progress");
     verboseCheckbox->setSize(15, 15);
-    verboseCheckbox->setPosition("5%", "96%");
+    verboseCheckbox->setPosition("60%", "95.5%");
     verboseCheckbox->setChecked(true);
     verboseCheckbox->onChange([this](bool checked) {
         videoProcessor.setVerbose(checked);
@@ -1398,6 +1427,172 @@ void GUI::generatePreview() {
     statusLabel->setText("Preview generated");
 }
 
+void GUI::startLivePreview() {
+    if (isLivePreviewPlaying) {
+        return;
+    }
+
+    stopLivePreview();
+
+    shouldStopLivePreview = false;
+    isLivePreviewPlaying = true;
+    livePreviewAudioDurationSeconds = 0.0f;
+
+    // Prepare audio playback for the selected play range.
+    AudioBuffer* activeAudioBuffer = audioPlaylist.getAudioBuffer() ?
+                                     audioPlaylist.getAudioBuffer() :
+                                     videoProcessor.getAudioBuffer();
+    if (activeAudioBuffer && activeAudioBuffer->size() > 0 && activeAudioBuffer->getSampleRate() > 0) {
+        const auto& src = activeAudioBuffer->getData();
+        const size_t srcSize = src.size();
+
+        size_t startIndex = static_cast<size_t>(renderRangeStart * srcSize);
+        size_t endIndex = static_cast<size_t>(renderRangeEnd * srcSize);
+        startIndex = std::min(startIndex, srcSize - 1);
+        endIndex = std::min(endIndex, srcSize);
+        if (endIndex <= startIndex) {
+            endIndex = std::min(srcSize, startIndex + 1);
+        }
+
+        std::vector<std::int16_t> intSamples;
+        intSamples.reserve(endIndex - startIndex);
+        for (size_t i = startIndex; i < endIndex; ++i) {
+            float s = std::clamp(src[i], -1.0f, 1.0f);
+            intSamples.push_back(static_cast<std::int16_t>(s * 32767.0f));
+        }
+
+        if (!intSamples.empty()) {
+            auto buffer = std::make_unique<sf::SoundBuffer>();
+            if (buffer->loadFromSamples(intSamples.data(),
+                                        intSamples.size(),
+                                        1,
+                                        activeAudioBuffer->getSampleRate(),
+                                        std::vector<sf::SoundChannel>{sf::SoundChannel::Mono})) {
+                livePreviewSoundBuffer = std::move(buffer);
+                livePreviewSound = std::make_unique<sf::Sound>(*livePreviewSoundBuffer);
+                livePreviewSound->play();
+                livePreviewAudioDurationSeconds = static_cast<float>(intSamples.size()) /
+                                                  static_cast<float>(activeAudioBuffer->getSampleRate());
+                livePreviewAudioStartTime = std::chrono::steady_clock::now();
+            }
+        }
+    }
+
+    statusLabel->setText("Live preview playing...");
+    livePreviewThread = std::make_unique<std::thread>([this]() {
+        livePreviewLoop();
+    });
+}
+
+void GUI::stopLivePreview() {
+    shouldStopLivePreview = true;
+    isLivePreviewPlaying = false;
+
+    if (livePreviewSound) {
+        livePreviewSound->stop();
+    }
+    livePreviewSound.reset();
+    livePreviewSoundBuffer.reset();
+    livePreviewAudioDurationSeconds = 0.0f;
+
+    if (livePreviewThread && livePreviewThread->joinable()) {
+        livePreviewThread->join();
+    }
+    livePreviewThread.reset();
+}
+
+void GUI::livePreviewLoop() {
+    try {
+        const float previewFps = 15.0f;
+        const auto frameDelay = std::chrono::milliseconds(static_cast<int>(1000.0f / previewFps));
+
+        AudioBuffer* activeAudioBuffer = audioPlaylist.getAudioBuffer() ?
+                                         audioPlaylist.getAudioBuffer() :
+                                         videoProcessor.getAudioBuffer();
+
+        const bool hasImage = !loadedImage.empty();
+        const bool hasVideo = !videoProcessor.getVideoPath().empty();
+
+        if (!hasImage && !hasVideo) {
+            isLivePreviewPlaying = false;
+            return;
+        }
+
+        int frameStep = 0;
+        while (!shouldStopLivePreview) {
+            const float rangeLen = std::max(0.001f, renderRangeEnd - renderRangeStart);
+            float progress = 0.0f;
+            if (livePreviewAudioDurationSeconds > 0.0f) {
+                float elapsed = std::chrono::duration<float>(
+                    std::chrono::steady_clock::now() - livePreviewAudioStartTime).count();
+                if (elapsed >= livePreviewAudioDurationSeconds) {
+                    break;
+                }
+                progress = std::clamp(elapsed / livePreviewAudioDurationSeconds, 0.0f, 1.0f);
+            } else {
+                progress = std::fmod(frameStep * 0.02f, 1.0f);
+            }
+
+            float playPos = renderRangeStart + (progress * rangeLen);
+            currentAudioPosition = playPos;
+
+            if (activeAudioBuffer && activeAudioBuffer->size() > 0) {
+                size_t audioPos = static_cast<size_t>(playPos * activeAudioBuffer->size());
+                audioPos = std::min(audioPos, activeAudioBuffer->size() - 1);
+                activeAudioBuffer->setIndex(audioPos);
+            }
+
+            cv::Mat source;
+            if (hasImage) {
+                source = loadedImage;
+            } else {
+                int totalFrames = std::max(1, videoProcessor.getTotalFrames());
+                int frameIndex = static_cast<int>(playPos * (totalFrames - 1));
+                source = videoProcessor.getFrameAt(frameIndex);
+            }
+
+            if (source.empty()) {
+                std::this_thread::sleep_for(frameDelay);
+                frameStep++;
+                continue;
+            }
+
+            const int maxPreviewDim = 540;
+            cv::Mat lowResSource;
+            float scale = std::min(static_cast<float>(maxPreviewDim) / source.cols,
+                                   static_cast<float>(maxPreviewDim) / source.rows);
+            if (scale < 1.0f) {
+                cv::resize(source, lowResSource, cv::Size(), scale, scale, cv::INTER_LINEAR);
+            } else {
+                lowResSource = source;
+            }
+
+            syncAutomationTimeline(previewFps, activeAudioBuffer);
+            applyAutomationAtFrame(getAutomationFrameForPosition(previewFps, activeAudioBuffer));
+            cv::Mat processed = effectChain.applyEffects(lowResSource.clone(), activeAudioBuffer, previewFps);
+
+            {
+                std::lock_guard<std::mutex> lock(previewMutex);
+                latestProcessedFrame = processed;
+            }
+
+            std::this_thread::sleep_for(frameDelay);
+            frameStep++;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Live preview error: " << e.what() << std::endl;
+    }
+
+    isLivePreviewPlaying = false;
+
+    if (livePreviewSound) {
+        livePreviewSound->stop();
+    }
+    livePreviewSound.reset();
+    livePreviewSoundBuffer.reset();
+    livePreviewAudioDurationSeconds = 0.0f;
+}
+
 void GUI::processVideo() {
     std::cout << "processVideo() called" << std::endl;
     std::cout << "loadedImage empty: " << loadedImage.empty() << std::endl;
@@ -1561,6 +1756,19 @@ void GUI::draw() {
     // Update processing progress if active
     if (isProcessing) {
         updateProcessingProgress();
+    }
+
+    // Live preview uses latestProcessedFrame even when not in render-processing mode.
+    {
+        std::lock_guard<std::mutex> lock(previewMutex);
+        if (!latestProcessedFrame.empty() && !isProcessing) {
+            updatePreview(latestProcessedFrame);
+            latestProcessedFrame.release();
+        }
+    }
+
+    if (livePreviewStateLabel) {
+        livePreviewStateLabel->setText(isLivePreviewPlaying ? "Live: Playing" : "Live: Stopped");
     }
     
     gui.draw();
