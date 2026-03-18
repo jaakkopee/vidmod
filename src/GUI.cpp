@@ -283,15 +283,20 @@ void GUI::setupUI() {
     middlePanel->add(clearPlaylistBtn);
     
     // Chain Save/Load buttons
+    auto fxJsonLabel = tgui::Label::create("FX Chain JSON:");
+    fxJsonLabel->setPosition("5%", "42.5%");
+    fxJsonLabel->setTextSize(10);
+    middlePanel->add(fxJsonLabel);
+
     auto saveChainBtn = tgui::Button::create("Save Chain");
-    saveChainBtn->setSize("44%", "4%");
-    saveChainBtn->setPosition("5%", "43%");
+    saveChainBtn->setSize("44%", "3%");
+    saveChainBtn->setPosition("5%", "44.5%");
     saveChainBtn->onPress([this]() { saveEffectChain(); });
     middlePanel->add(saveChainBtn);
     
     auto loadChainBtn = tgui::Button::create("Load Chain");
-    loadChainBtn->setSize("44%", "4%");
-    loadChainBtn->setPosition("51%", "43%");
+    loadChainBtn->setSize("44%", "3%");
+    loadChainBtn->setPosition("51%", "44.5%");
     loadChainBtn->onPress([this]() { loadEffectChain(); });
     middlePanel->add(loadChainBtn);
     
