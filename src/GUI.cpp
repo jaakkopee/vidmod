@@ -12,6 +12,9 @@
 #include <filesystem>
 #include <chrono>
 #include <sys/wait.h>  // for WEXITSTATUS
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 namespace {
 std::vector<std::string> withAudioGainParam(const std::vector<std::string>& paramNames) {
@@ -233,6 +236,12 @@ void GUI::setupUI() {
     removeEffectBtn->setPosition("5%", "87%");
     removeEffectBtn->onPress([this]() { removeSelectedEffect(); });
     leftPanel->add(removeEffectBtn);
+
+    auto automationButton = tgui::Button::create("Automation");
+    automationButton->setSize("90%", "4%");
+    automationButton->setPosition("5%", "92%");
+    automationButton->onPress([this]() { openAutomationWindow(); });
+    leftPanel->add(automationButton);
     
     // Middle panel for audio and file management
     auto middlePanel = tgui::Panel::create();
@@ -304,31 +313,35 @@ void GUI::setupUI() {
     loadChainBtn->setPosition("51%", "48.5%");
     loadChainBtn->onPress([this]() { loadEffectChain(); });
     middlePanel->add(loadChainBtn);
+
+    fxChainAutomationToggle = tgui::CheckBox::create();
+    fxChainAutomationToggle->setPosition("5%", "51.5%");
+    fxChainAutomationToggle->setSize("5%", "2.5%");
+    fxChainAutomationToggle->setChecked(true);
+    middlePanel->add(fxChainAutomationToggle);
+
+    auto fxChainAutomationLabel = tgui::Label::create("Save/Load Automation");
+    fxChainAutomationLabel->setPosition("11%", "51.3%");
+    fxChainAutomationLabel->setTextSize(10);
+    middlePanel->add(fxChainAutomationLabel);
     
     // File Loading Section
     auto fileLabel = tgui::Label::create("Input Files:");
-    fileLabel->setPosition("5%", "52.5%");
+    fileLabel->setPosition("5%", "54%");
     fileLabel->setTextSize(14);
     middlePanel->add(fileLabel);
     
     auto loadVideoButton = tgui::Button::create("Load Video");
     loadVideoButton->setSize("90%", "4%");
-    loadVideoButton->setPosition("5%", "56%");
+    loadVideoButton->setPosition("5%", "57.5%");
     loadVideoButton->onPress([this]() { loadVideoFile(); });
     middlePanel->add(loadVideoButton);
     
     auto loadImageButton = tgui::Button::create("Load Image");
     loadImageButton->setSize("90%", "4%");
-    loadImageButton->setPosition("5%", "60.5%");
+    loadImageButton->setPosition("5%", "62%");
     loadImageButton->onPress([this]() { loadImageFile(); });
     middlePanel->add(loadImageButton);
-    
-    // Automation button
-    auto automationButton = tgui::Button::create("Automation");
-    automationButton->setSize("90%", "4%");
-    automationButton->setPosition("5%", "65%");
-    automationButton->onPress([this]() { openAutomationWindow(); });
-    middlePanel->add(automationButton);
     
     // Audio position slider
     auto audioTimeLabel = tgui::Label::create("Audio Time:");
@@ -1125,10 +1138,33 @@ void GUI::saveEffectChain() {
     saveBtn->setPosition("5%", "75%");
     saveBtn->onPress([this, fileDialog, pathEdit]() {
         std::string path = pathEdit->getText().toStdString();
-        if (effectChain.saveToJson(path)) {
-            statusLabel->setText("Chain saved: " + path);
+        bool saveAutomation = fxChainAutomationToggle && fxChainAutomationToggle->isChecked();
+        bool ok = false;
+        if (saveAutomation && automationWindow) {
+            try {
+                json root;
+                root["format"] = "vidmod-chain-bundle-v1";
+                root["effectChain"] = json::parse(effectChain.toJsonString());
+                std::string automationText = automationWindow->exportAutomationJson();
+                root["automation"] = automationText.empty() ? json::object() : json::parse(automationText);
+
+                std::ofstream out(path);
+                if (out.is_open()) {
+                    out << root.dump(2);
+                    ok = true;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Failed to save chain bundle: " << e.what() << std::endl;
+                ok = false;
+            }
         } else {
-            statusLabel->setText("Failed to save chain");
+            ok = effectChain.saveToJson(path);
+        }
+
+        if (ok) {
+            statusLabel->setText(saveAutomation ? "Chain + automation saved: " + path : "Chain saved: " + path);
+        } else {
+            statusLabel->setText(saveAutomation ? "Failed to save chain + automation" : "Failed to save chain");
         }
         gui.remove(fileDialog);
     });
@@ -1190,12 +1226,45 @@ void GUI::loadEffectChain() {
     loadBtn->setPosition("5%", "75%");
     loadBtn->onPress([this, fileDialog, pathEdit]() {
         std::string path = pathEdit->getText().toStdString();
-        if (effectChain.loadFromJson(path)) {
+        bool loadAutomation = fxChainAutomationToggle && fxChainAutomationToggle->isChecked();
+        bool ok = false;
+        bool loadedAutomation = false;
+
+        if (loadAutomation) {
+            try {
+                std::ifstream in(path);
+                if (in.is_open()) {
+                    json root;
+                    in >> root;
+
+                    if (root.contains("effectChain")) {
+                        ok = effectChain.fromJsonString(root["effectChain"].dump());
+                        if (ok && root.contains("automation") && automationWindow) {
+                            loadedAutomation = automationWindow->importAutomationJson(root["automation"].dump());
+                        }
+                    } else {
+                        // Backward-compatible fallback for plain chain JSON files.
+                        ok = effectChain.fromJsonString(root.dump());
+                    }
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Failed to load chain bundle: " << e.what() << std::endl;
+                ok = false;
+            }
+        } else {
+            ok = effectChain.loadFromJson(path);
+        }
+
+        if (ok) {
             updateChainList();
             updateParameterPanel();
-            statusLabel->setText("Chain loaded: " + path);
+            if (loadAutomation) {
+                statusLabel->setText(loadedAutomation ? "Chain + automation loaded: " + path : "Chain loaded (no automation in file): " + path);
+            } else {
+                statusLabel->setText("Chain loaded: " + path);
+            }
         } else {
-            statusLabel->setText("Failed to load chain");
+            statusLabel->setText(loadAutomation ? "Failed to load chain bundle" : "Failed to load chain");
         }
         gui.remove(fileDialog);
     });

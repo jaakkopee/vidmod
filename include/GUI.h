@@ -50,6 +50,7 @@ private:
     tgui::Label::Ptr renderRangeLabel;
     tgui::Button::Ptr stopPreviewButton;
     tgui::CheckBox::Ptr verboseCheckbox;
+    tgui::CheckBox::Ptr fxChainAutomationToggle;
     
     // Automation window
     std::unique_ptr<AutomationWindow> automationWindow;

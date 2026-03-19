@@ -7,6 +7,7 @@
 #include "EffectChain.h"
 #include <map>
 #include <string>
+#include <vector>
 
 class AutomationWindow {
 private:
@@ -80,6 +81,10 @@ public:
     const std::map<int, std::map<std::string, ParameterAutomation>>& getAutomations() const {
         return effectAutomations;
     }
+
+    // JSON serialization for optional save/load together with effect chain files
+    std::string exportAutomationJson() const;
+    bool importAutomationJson(const std::string& jsonText);
     
     void setTotalFrames(int frames) { totalFrames = frames; }
     int getTotalFrames() const { return totalFrames; }

@@ -4,6 +4,9 @@
 #include <iomanip>
 #include <cmath>
 #include <algorithm>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 namespace {
 std::vector<std::string> withAudioGainParam(const std::vector<std::string>& paramNames) {
@@ -233,6 +236,126 @@ void AutomationWindow::updateParamList() {
         for (const auto& paramName : paramNames) {
             paramComboBox->addItem(paramName);
         }
+    }
+}
+
+std::string AutomationWindow::exportAutomationJson() const {
+    try {
+        json root;
+        root["totalFrames"] = totalFrames;
+        root["effectAutomations"] = json::array();
+        root["parameterRangeIndices"] = json::array();
+
+        for (const auto& effectEntry : effectAutomations) {
+            json effectJson;
+            effectJson["effectIndex"] = effectEntry.first;
+            effectJson["parameters"] = json::object();
+
+            for (const auto& paramEntry : effectEntry.second) {
+                const auto& paramName = paramEntry.first;
+                const auto& automation = paramEntry.second;
+
+                json paramJson;
+                paramJson["min"] = automation.getMinValue();
+                paramJson["max"] = automation.getMaxValue();
+                paramJson["keyframes"] = json::array();
+                for (const auto& kf : automation.getAllKeyframes()) {
+                    paramJson["keyframes"].push_back({
+                        {"frame", kf.frame},
+                        {"value", kf.value}
+                    });
+                }
+
+                effectJson["parameters"][paramName] = std::move(paramJson);
+            }
+
+            root["effectAutomations"].push_back(std::move(effectJson));
+        }
+
+        for (const auto& effectEntry : parameterRangeIndices) {
+            json effectJson;
+            effectJson["effectIndex"] = effectEntry.first;
+            effectJson["parameters"] = json::object();
+            for (const auto& paramEntry : effectEntry.second) {
+                effectJson["parameters"][paramEntry.first] = paramEntry.second;
+            }
+            root["parameterRangeIndices"].push_back(std::move(effectJson));
+        }
+
+        return root.dump(2);
+    } catch (const std::exception& e) {
+        std::cerr << "Error exporting automation JSON: " << e.what() << std::endl;
+        return "";
+    }
+}
+
+bool AutomationWindow::importAutomationJson(const std::string& jsonText) {
+    try {
+        json root = json::parse(jsonText);
+
+        effectAutomations.clear();
+        parameterRangeIndices.clear();
+        parameterBaseValues.clear();
+
+        if (root.contains("totalFrames") && root["totalFrames"].is_number_integer()) {
+            totalFrames = root["totalFrames"].get<int>();
+        }
+
+        if (root.contains("effectAutomations") && root["effectAutomations"].is_array()) {
+            for (const auto& effectJson : root["effectAutomations"]) {
+                if (!effectJson.contains("effectIndex") || !effectJson["effectIndex"].is_number_integer()) {
+                    continue;
+                }
+
+                const int effectIndex = effectJson["effectIndex"].get<int>();
+                if (!effectJson.contains("parameters") || !effectJson["parameters"].is_object()) {
+                    continue;
+                }
+
+                for (auto it = effectJson["parameters"].begin(); it != effectJson["parameters"].end(); ++it) {
+                    const std::string paramName = it.key();
+                    const json& paramJson = it.value();
+
+                    float minVal = 0.0f;
+                    float maxVal = 1.0f;
+                    if (paramJson.contains("min") && paramJson["min"].is_number()) minVal = paramJson["min"].get<float>();
+                    if (paramJson.contains("max") && paramJson["max"].is_number()) maxVal = paramJson["max"].get<float>();
+
+                    ParameterAutomation automation(minVal, maxVal);
+                    if (paramJson.contains("keyframes") && paramJson["keyframes"].is_array()) {
+                        for (const auto& keyframeJson : paramJson["keyframes"]) {
+                            if (!keyframeJson.contains("frame") || !keyframeJson.contains("value")) continue;
+                            if (!keyframeJson["frame"].is_number_integer() || !keyframeJson["value"].is_number()) continue;
+                            automation.addKeyframe(keyframeJson["frame"].get<int>(), keyframeJson["value"].get<float>());
+                        }
+                    }
+
+                    effectAutomations[effectIndex][paramName] = std::move(automation);
+                }
+            }
+        }
+
+        if (root.contains("parameterRangeIndices") && root["parameterRangeIndices"].is_array()) {
+            for (const auto& effectJson : root["parameterRangeIndices"]) {
+                if (!effectJson.contains("effectIndex") || !effectJson["effectIndex"].is_number_integer()) {
+                    continue;
+                }
+                const int effectIndex = effectJson["effectIndex"].get<int>();
+                if (!effectJson.contains("parameters") || !effectJson["parameters"].is_object()) {
+                    continue;
+                }
+                for (auto it = effectJson["parameters"].begin(); it != effectJson["parameters"].end(); ++it) {
+                    if (it.value().is_number_integer()) {
+                        parameterRangeIndices[effectIndex][it.key()] = it.value().get<int>();
+                    }
+                }
+            }
+        }
+
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error importing automation JSON: " << e.what() << std::endl;
+        return false;
     }
 }
 
