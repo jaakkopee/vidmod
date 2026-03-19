@@ -54,6 +54,10 @@ public:
     
     // Get total duration in seconds
     float getTotalDuration() const;
+
+    // JSON serialization
+    bool saveToJson(const std::string& filePath) const;
+    bool loadFromJson(const std::string& filePath);
     
     // Move track to different position
     bool moveTrack(size_t fromIndex, size_t toIndex);

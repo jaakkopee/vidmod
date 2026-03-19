@@ -81,12 +81,14 @@ private:
     std::mutex previewMutex;
     cv::Mat latestProcessedFrame;
     int currentDisplayFrame;
+    bool isDraggingChainItem;
+    bool isDraggingPlaylistItem;
+    int dragSourceChainIndex;
+    int dragSourcePlaylistIndex;
     
     void setupUI();
     void addEffectToChain(const std::string& effectName);
     void removeSelectedEffect();
-    void moveEffectUp();
-    void moveEffectDown();
     void updateParameterPanel();
     void updateChainList();
     void loadVideoFile();
@@ -95,6 +97,8 @@ private:
     void addAudioToPlaylist();
     void removeAudioFromPlaylist();
     void clearPlaylist();
+    void savePlaylist();
+    void loadPlaylist();
     void updatePlaylistDisplay();
     void syncPlaylistToVideoProcessor();
     void saveEffectChain();
@@ -118,6 +122,9 @@ private:
     int mapRenderFrameToAutomationFrame(int frameIndex, int totalRenderFrames) const;
     void applyAutomationAtFrame(int frameNumber);
     void updateParameterDisplayValues();
+    int getListBoxIndexAtPosition(const tgui::ListBox::Ptr& listBox, sf::Vector2f mousePos) const;
+    void startListDrag(sf::Vector2f mousePos);
+    void finishListDrag(sf::Vector2f mousePos);
 
 public:
     GUI(sf::RenderWindow& win);

@@ -77,32 +77,75 @@ void AutomationWindow::setupUI() {
     paramComboBox = tgui::ComboBox::create();
     paramComboBox->setPosition(440, 10);
     paramComboBox->setSize(160, 25);
-    paramComboBox->onItemSelect([this](int) {
+    // Shared lambda: compute and apply the range for the current selectedParam
+    // given a multiplier combo-box index. Called from both paramComboBox and
+    // rangeComboBox handlers so the range is always correct on first selection.
+    auto applyRange = [this](int index) {
+        if (selectedEffectIndex < 0 || selectedParam.empty()) return;
+
+        if (effectChainRef && !parameterBaseValues[selectedEffectIndex].count(selectedParam)) {
+            const auto& effects = effectChainRef->getEffects();
+            if (selectedEffectIndex < static_cast<int>(effects.size())) {
+                parameterBaseValues[selectedEffectIndex][selectedParam] =
+                    effects[selectedEffectIndex]->getParameter(selectedParam);
+            }
+        }
+
+        parameterRangeIndices[selectedEffectIndex][selectedParam] = index;
+
+        float multiplier = 1.0f;
+        switch (index) {
+            case 0: multiplier = 0.0001f; break;
+            case 1: multiplier = 0.001f;  break;
+            case 2: multiplier = 0.01f;   break;
+            case 3: multiplier = 0.1f;    break;
+            case 4: multiplier = 1.0f;    break;
+            case 5: multiplier = 10.0f;   break;
+            case 6: multiplier = 100.0f;  break;
+            case 7: multiplier = 1000.0f; break;
+            case 8: multiplier = 10000.0f;break;
+        }
+
+        float baseMagnitude = 1.0f;
+        if (effectChainRef) {
+            const auto& effects = effectChainRef->getEffects();
+            if (selectedEffectIndex < static_cast<int>(effects.size())) {
+                baseMagnitude = effects[selectedEffectIndex]->getParameterNominalMax(selectedParam);
+            }
+        }
+        float minVal = 0.0f;
+        float maxVal = baseMagnitude * multiplier;
+
+        rangeLabel->setText("Range: " + tgui::String(minVal) + " - " + tgui::String(maxVal));
+
+        if (effectAutomations[selectedEffectIndex].count(selectedParam) > 0) {
+            effectAutomations[selectedEffectIndex][selectedParam].setRange(minVal, maxVal);
+        } else {
+            effectAutomations[selectedEffectIndex][selectedParam] = ParameterAutomation(minVal, maxVal);
+        }
+    };
+
+    paramComboBox->onItemSelect([this, applyRange](int) {
         if (paramComboBox->getSelectedItemIndex() >= 0 && selectedEffectIndex >= 0) {
             selectedParam = paramComboBox->getSelectedItem().toStdString();
-            
-            // Capture the base (default) value the first time this parameter is selected.
-            // We must do this BEFORE any automation can overwrite the live value.
-            if (effectChainRef && !parameterBaseValues[selectedEffectIndex].count(selectedParam)) {
-                const auto& effects = effectChainRef->getEffects();
-                if (selectedEffectIndex < static_cast<int>(effects.size())) {
-                    parameterBaseValues[selectedEffectIndex][selectedParam] =
-                        effects[selectedEffectIndex]->getParameter(selectedParam);
-                }
-            }
-            
+
             // Load saved range index for this parameter, or default to 4 ("1x")
-            int savedRangeIndex = 4;  // Default multiplier
+            int savedRangeIndex = 4;
             if (parameterRangeIndices[selectedEffectIndex].count(selectedParam) > 0) {
                 savedRangeIndex = parameterRangeIndices[selectedEffectIndex][selectedParam];
             }
-            
-            // Set the range selector to the saved index (will trigger its handler)
+
+            // Always apply the range immediately so that the label and automation
+            // are correct even when the combo index hasn't changed (TGUI won't
+            // re-fire onItemSelect if the index is already the same).
+            applyRange(savedRangeIndex);
+
+            // Keep the combo widget in sync (may or may not fire its own handler)
             rangeComboBox->setSelectedItemByIndex(savedRangeIndex);
         }
     });
     gui.add(paramComboBox);
-    
+
     // Range selector
     auto rangeLabel2 = tgui::Label::create("Range:");
     rangeLabel2->setPosition(620, 10);
@@ -122,69 +165,8 @@ void AutomationWindow::setupUI() {
     rangeComboBox->addItem("*1000");
     rangeComboBox->addItem("*10000");
     rangeComboBox->setSelectedItemByIndex(4); // Default to 1
-    rangeComboBox->onItemSelect([this](int index) {
-        // Save this range index for the current parameter
-        if (selectedEffectIndex >= 0 && !selectedParam.empty()) {
-            parameterRangeIndices[selectedEffectIndex][selectedParam] = index;
-        }
-        
-        // Use the stored base value — NOT the live parameter value which may have
-        // been overwritten by automation. Fall back to 1.0 if somehow not stored yet.
-        float baseValue = 1.0f;
-        if (selectedEffectIndex >= 0 && !selectedParam.empty()) {
-            auto& baseMap = parameterBaseValues[selectedEffectIndex];
-            if (baseMap.count(selectedParam)) {
-                baseValue = baseMap[selectedParam];
-            } else if (effectChainRef) {
-                // First time the range fires before param-select captured it
-                const auto& effects = effectChainRef->getEffects();
-                if (selectedEffectIndex < static_cast<int>(effects.size())) {
-                    baseValue = effects[selectedEffectIndex]->getParameter(selectedParam);
-                    baseMap[selectedParam] = baseValue;
-                }
-            }
-        }
-        
-        // Calculate multiplier based on selection
-        float multiplier = 1.0f;
-        switch (index) {
-            case 0: multiplier = 0.0001f; break;  // /10000
-            case 1: multiplier = 0.001f; break;   // /1000
-            case 2: multiplier = 0.01f; break;    // /100
-            case 3: multiplier = 0.1f; break;     // /10
-            case 4: multiplier = 1.0f; break;     // 1
-            case 5: multiplier = 10.0f; break;    // *10
-            case 6: multiplier = 100.0f; break;   // *100
-            case 7: multiplier = 1000.0f; break;  // *1000
-            case 8: multiplier = 10000.0f; break; // *10000
-        }
-        
-        float minVal = 0.0f;
-        // Use the effect's canonical parameter maximum so that all parameters of
-        // the same logical type (e.g. ink_r, ink_g, ink_b → 255) share the same
-        // base, making the multiplier behave consistently across parameters.
-        float baseMagnitude = 1.0f;
-        if (effectChainRef && selectedEffectIndex >= 0) {
-            const auto& effects = effectChainRef->getEffects();
-            if (selectedEffectIndex < static_cast<int>(effects.size())) {
-                baseMagnitude = effects[selectedEffectIndex]->getParameterNominalMax(selectedParam);
-            }
-        }
-        float maxVal = baseMagnitude * multiplier;
-        
-        // Always update the range label
-        rangeLabel->setText("Range: " + tgui::String(minVal) + " - " + tgui::String(maxVal));
-        
-        // Update automation range if parameter is selected
-        if (selectedEffectIndex >= 0 && !selectedParam.empty()) {
-            // If automation exists, update its range (preserving keyframes)
-            if (effectAutomations[selectedEffectIndex].count(selectedParam) > 0) {
-                effectAutomations[selectedEffectIndex][selectedParam].setRange(minVal, maxVal);
-            } else {
-                // Create new automation with this range
-                effectAutomations[selectedEffectIndex][selectedParam] = ParameterAutomation(minVal, maxVal);
-            }
-        }
+    rangeComboBox->onItemSelect([this, applyRange](int index) {
+        applyRange(index);
     });
     gui.add(rangeComboBox);
     

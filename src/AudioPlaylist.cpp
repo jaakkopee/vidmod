@@ -2,6 +2,10 @@
 #include <sndfile.h>
 #include <iostream>
 #include <algorithm>
+#include <fstream>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 AudioPlaylist::AudioPlaylist(int sampleRate) 
     : audioBuffer(nullptr), targetSampleRate(sampleRate) {}
@@ -75,16 +79,25 @@ void AudioPlaylist::rebuildBuffer() {
         audioBuffer.reset();
         return;
     }
-    
-    // Calculate total samples needed
-    size_t totalSamples = 0;
+
+    std::vector<std::string> trackPaths;
+    trackPaths.reserve(tracks.size());
     for (const auto& track : tracks) {
-        totalSamples += (track.endIndex - track.startIndex);
+        trackPaths.push_back(track.filePath);
     }
-    
-    std::cout << "Playlist rebuilt: " << tracks.size() << " tracks, " 
-              << totalSamples << " samples, "
-              << (totalSamples / static_cast<float>(targetSampleRate)) << " seconds" << std::endl;
+
+    tracks.clear();
+    audioBuffer.reset();
+
+    for (const auto& path : trackPaths) {
+        if (!addTrack(path)) {
+            std::cerr << "Failed to rebuild playlist track: " << path << std::endl;
+            break;
+        }
+    }
+
+    std::cout << "Playlist rebuilt in new order: " << tracks.size() << " tracks, "
+              << getTotalDuration() << " seconds" << std::endl;
 }
 
 bool AudioPlaylist::addTrack(const std::string& audioFile) {
@@ -179,6 +192,71 @@ float AudioPlaylist::getTotalDuration() const {
         return 0.0f;
     }
     return static_cast<float>(audioBuffer->size()) / targetSampleRate;
+}
+
+bool AudioPlaylist::saveToJson(const std::string& filePath) const {
+    try {
+        json j;
+        j["version"] = "1.0";
+        j["sampleRate"] = targetSampleRate;
+        j["tracks"] = json::array();
+
+        for (const auto& track : tracks) {
+            json trackJson;
+            trackJson["filePath"] = track.filePath;
+            j["tracks"].push_back(trackJson);
+        }
+
+        std::ofstream file(filePath);
+        if (!file.is_open()) {
+            std::cerr << "Failed to open playlist file for writing: " << filePath << std::endl;
+            return false;
+        }
+
+        file << j.dump(2);
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error saving playlist JSON: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool AudioPlaylist::loadFromJson(const std::string& filePath) {
+    try {
+        std::ifstream file(filePath);
+        if (!file.is_open()) {
+            std::cerr << "Failed to open playlist file for reading: " << filePath << std::endl;
+            return false;
+        }
+
+        json j;
+        file >> j;
+
+        if (!j.contains("tracks") || !j["tracks"].is_array()) {
+            std::cerr << "Invalid playlist JSON: missing 'tracks' array" << std::endl;
+            return false;
+        }
+
+        AudioPlaylist loadedPlaylist(targetSampleRate);
+        for (const auto& trackJson : j["tracks"]) {
+            if (!trackJson.contains("filePath") || !trackJson["filePath"].is_string()) {
+                std::cerr << "Invalid playlist JSON: track missing string filePath" << std::endl;
+                return false;
+            }
+
+            const std::string path = trackJson["filePath"].get<std::string>();
+            if (!loadedPlaylist.addTrack(path)) {
+                std::cerr << "Failed to load playlist track: " << path << std::endl;
+                return false;
+            }
+        }
+
+        *this = std::move(loadedPlaylist);
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading playlist JSON: " << e.what() << std::endl;
+        return false;
+    }
 }
 
 bool AudioPlaylist::moveTrack(size_t fromIndex, size_t toIndex) {

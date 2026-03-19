@@ -93,7 +93,7 @@ int runFfmpegWithProgressPipe(const std::string& ffmpegCommand,
 }
 }
 
-GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), renderRangeStart(0.0f), renderRangeEnd(1.0f), showingPreview(false), isProcessing(false), isAudioMuxing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), isLivePreviewPlaying(false), shouldStopLivePreview(false), livePreviewAudioDurationSeconds(0.0f), currentDisplayFrame(0) {
+GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), renderRangeStart(0.0f), renderRangeEnd(1.0f), showingPreview(false), isProcessing(false), isAudioMuxing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), isLivePreviewPlaying(false), shouldStopLivePreview(false), livePreviewAudioDurationSeconds(0.0f), currentDisplayFrame(0), isDraggingChainItem(false), isDraggingPlaylistItem(false), dragSourceChainIndex(-1), dragSourcePlaylistIndex(-1) {
     automationWindow = std::make_unique<AutomationWindow>(1000);
     setupUI();
 }
@@ -234,18 +234,6 @@ void GUI::setupUI() {
     removeEffectBtn->onPress([this]() { removeSelectedEffect(); });
     leftPanel->add(removeEffectBtn);
     
-    auto moveEffectUpBtn = tgui::Button::create("▲ Move Effect Up");
-    moveEffectUpBtn->setSize("44%", "4%");
-    moveEffectUpBtn->setPosition("5%", "92%");
-    moveEffectUpBtn->onPress([this]() { moveEffectUp(); });
-    leftPanel->add(moveEffectUpBtn);
-    
-    auto moveEffectDownBtn = tgui::Button::create("▼ Move Effect Down");
-    moveEffectDownBtn->setSize("44%", "4%");
-    moveEffectDownBtn->setPosition("51%", "92%");
-    moveEffectDownBtn->onPress([this]() { moveEffectDown(); });
-    leftPanel->add(moveEffectDownBtn);
-    
     // Middle panel for audio and file management
     auto middlePanel = tgui::Panel::create();
     middlePanel->setSize("20%", "100%");
@@ -260,68 +248,85 @@ void GUI::setupUI() {
     middlePanel->add(playlistLabel);
     
     playlistBox = tgui::ListBox::create();
-    playlistBox->setSize("90%", "25%");
+    playlistBox->setSize("90%", "22%");
     playlistBox->setPosition("5%", "7%");
     middlePanel->add(playlistBox);
     
     auto addAudioBtn = tgui::Button::create("▲ Add Audio");
     addAudioBtn->setSize("44%", "4%");
-    addAudioBtn->setPosition("5%", "33%");
+    addAudioBtn->setPosition("5%", "30.5%");
     addAudioBtn->onPress([this]() { addAudioToPlaylist(); });
     middlePanel->add(addAudioBtn);
     
     auto removeAudioBtn = tgui::Button::create("▼ Remove Audio");
     removeAudioBtn->setSize("44%", "4%");
-    removeAudioBtn->setPosition("51%", "33%");
+    removeAudioBtn->setPosition("51%", "30.5%");
     removeAudioBtn->onPress([this]() { removeAudioFromPlaylist(); });
     middlePanel->add(removeAudioBtn);
     
     auto clearPlaylistBtn = tgui::Button::create("Clear Playlist");
     clearPlaylistBtn->setSize("90%", "4%");
-    clearPlaylistBtn->setPosition("5%", "38%");
+    clearPlaylistBtn->setPosition("5%", "35.5%");
     clearPlaylistBtn->onPress([this]() { clearPlaylist(); });
     middlePanel->add(clearPlaylistBtn);
+
+    auto playlistJsonLabel = tgui::Label::create("Playlist JSON:");
+    playlistJsonLabel->setPosition("5%", "40.5%");
+    playlistJsonLabel->setTextSize(10);
+    middlePanel->add(playlistJsonLabel);
+
+    auto savePlaylistBtn = tgui::Button::create("Save Playlist");
+    savePlaylistBtn->setSize("44%", "3%");
+    savePlaylistBtn->setPosition("5%", "42.5%");
+    savePlaylistBtn->onPress([this]() { savePlaylist(); });
+    middlePanel->add(savePlaylistBtn);
+
+    auto loadPlaylistBtn = tgui::Button::create("Load Playlist");
+    loadPlaylistBtn->setSize("44%", "3%");
+    loadPlaylistBtn->setPosition("51%", "42.5%");
+    loadPlaylistBtn->onPress([this]() { loadPlaylist(); });
+    middlePanel->add(loadPlaylistBtn);
     
     // Chain Save/Load buttons
     auto fxJsonLabel = tgui::Label::create("FX Chain JSON:");
-    fxJsonLabel->setPosition("5%", "42.5%");
+    fxJsonLabel->setPosition("5%", "46.5%");
     fxJsonLabel->setTextSize(10);
     middlePanel->add(fxJsonLabel);
 
     auto saveChainBtn = tgui::Button::create("Save Chain");
     saveChainBtn->setSize("44%", "3%");
-    saveChainBtn->setPosition("5%", "44.5%");
+    saveChainBtn->setPosition("5%", "48.5%");
     saveChainBtn->onPress([this]() { saveEffectChain(); });
     middlePanel->add(saveChainBtn);
     
     auto loadChainBtn = tgui::Button::create("Load Chain");
     loadChainBtn->setSize("44%", "3%");
-    loadChainBtn->setPosition("51%", "44.5%");
+    loadChainBtn->setPosition("51%", "48.5%");
     loadChainBtn->onPress([this]() { loadEffectChain(); });
     middlePanel->add(loadChainBtn);
     
     // File Loading Section
     auto fileLabel = tgui::Label::create("Input Files:");
-    fileLabel->setPosition("5%", "48%");
-    fileLabel->setTextSize(16);
+    fileLabel->setPosition("5%", "52.5%");
+    fileLabel->setTextSize(14);
     middlePanel->add(fileLabel);
     
     auto loadVideoButton = tgui::Button::create("Load Video");
     loadVideoButton->setSize("90%", "4%");
-    loadVideoButton->setPosition("5%", "53%");
+    loadVideoButton->setPosition("5%", "56%");
     loadVideoButton->onPress([this]() { loadVideoFile(); });
     middlePanel->add(loadVideoButton);
     
     auto loadImageButton = tgui::Button::create("Load Image");
     loadImageButton->setSize("90%", "4%");
-    loadImageButton->setPosition("5%", "58%");
+    loadImageButton->setPosition("5%", "60.5%");
     loadImageButton->onPress([this]() { loadImageFile(); });
     middlePanel->add(loadImageButton);
     
     // Automation button
     auto automationButton = tgui::Button::create("Automation");
     automationButton->setSize("90%", "4%");
-    automationButton->setPosition("5%", "63%");
+    automationButton->setPosition("5%", "65%");
     automationButton->onPress([this]() { openAutomationWindow(); });
     middlePanel->add(automationButton);
     
@@ -540,24 +545,6 @@ void GUI::removeSelectedEffect() {
         updateChainList();
         paramPanel->removeAllWidgets();
         statusLabel->setText("Effect removed");
-    }
-}
-
-void GUI::moveEffectUp() {
-    int selected = chainList->getSelectedItemIndex();
-    if (selected > 0) {
-        effectChain.moveEffect(selected, selected - 1);
-        updateChainList();
-        chainList->setSelectedItemByIndex(selected - 1);
-    }
-}
-
-void GUI::moveEffectDown() {
-    int selected = chainList->getSelectedItemIndex();
-    if (selected >= 0 && selected < static_cast<int>(effectChain.size()) - 1) {
-        effectChain.moveEffect(selected, selected + 1);
-        updateChainList();
-        chainList->setSelectedItemByIndex(selected + 1);
     }
 }
 
@@ -932,6 +919,135 @@ void GUI::clearPlaylist() {
     updatePlaylistDisplay();
     syncPlaylistToVideoProcessor();
     statusLabel->setText("Playlist cleared");
+}
+
+void GUI::savePlaylist() {
+    auto fileDialog = tgui::ChildWindow::create("Save Playlist");
+    fileDialog->setSize("500", "180");
+    fileDialog->setPosition("(&.size - size) / 2");
+
+    auto pathLabel = tgui::Label::create("Save as:");
+    pathLabel->setPosition("5%", "10%");
+    pathLabel->setTextSize(14);
+    fileDialog->add(pathLabel);
+
+    auto pathEdit = tgui::EditBox::create();
+    pathEdit->setSize("90%", "20%");
+    pathEdit->setPosition("5%", "30%");
+    pathEdit->setText("audio_playlist.json");
+    fileDialog->add(pathEdit);
+
+    auto browseBtn = tgui::Button::create("Browse...");
+    browseBtn->setSize("30%", "15%");
+    browseBtn->setPosition("5%", "55%");
+    browseBtn->onPress([pathEdit]() {
+        FILE* pipe = popen("osascript -e 'POSIX path of (choose file name with prompt \"Save Playlist\" default name \"audio_playlist.json\")' 2>/dev/null", "r");
+        if (pipe) {
+            char buffer[1024];
+            std::string result;
+            while (fgets(buffer, sizeof(buffer), pipe)) {
+                result += buffer;
+            }
+            pclose(pipe);
+            if (!result.empty() && result.back() == '\n') {
+                result.pop_back();
+            }
+            if (!result.empty()) {
+                pathEdit->setText(result);
+            }
+        }
+    });
+    fileDialog->add(browseBtn);
+
+    auto saveBtn = tgui::Button::create("Save");
+    saveBtn->setSize("30%", "15%");
+    saveBtn->setPosition("5%", "75%");
+    saveBtn->onPress([this, fileDialog, pathEdit]() {
+        std::string path = pathEdit->getText().toStdString();
+        if (audioPlaylist.saveToJson(path)) {
+            statusLabel->setText("Playlist saved: " + path);
+        } else {
+            statusLabel->setText("Failed to save playlist");
+        }
+        gui.remove(fileDialog);
+    });
+    fileDialog->add(saveBtn);
+
+    auto cancelBtn = tgui::Button::create("Cancel");
+    cancelBtn->setSize("30%", "15%");
+    cancelBtn->setPosition("65%", "75%");
+    cancelBtn->onPress([this, fileDialog]() {
+        gui.remove(fileDialog);
+    });
+    fileDialog->add(cancelBtn);
+
+    gui.add(fileDialog);
+}
+
+void GUI::loadPlaylist() {
+    auto fileDialog = tgui::ChildWindow::create("Load Playlist");
+    fileDialog->setSize("500", "180");
+    fileDialog->setPosition("(&.size - size) / 2");
+
+    auto pathLabel = tgui::Label::create("File path:");
+    pathLabel->setPosition("5%", "10%");
+    pathLabel->setTextSize(14);
+    fileDialog->add(pathLabel);
+
+    auto pathEdit = tgui::EditBox::create();
+    pathEdit->setSize("90%", "20%");
+    pathEdit->setPosition("5%", "30%");
+    pathEdit->setText("audio_playlist.json");
+    fileDialog->add(pathEdit);
+
+    auto browseBtn = tgui::Button::create("Browse...");
+    browseBtn->setSize("30%", "15%");
+    browseBtn->setPosition("5%", "55%");
+    browseBtn->onPress([pathEdit]() {
+        FILE* pipe = popen("osascript -e 'POSIX path of (choose file with prompt \"Select Playlist File\" of type {\"public.json\"})' 2>/dev/null", "r");
+        if (pipe) {
+            char buffer[1024];
+            std::string result;
+            while (fgets(buffer, sizeof(buffer), pipe)) {
+                result += buffer;
+            }
+            pclose(pipe);
+            if (!result.empty() && result.back() == '\n') {
+                result.pop_back();
+            }
+            if (!result.empty()) {
+                pathEdit->setText(result);
+            }
+        }
+    });
+    fileDialog->add(browseBtn);
+
+    auto loadBtn = tgui::Button::create("Load");
+    loadBtn->setSize("30%", "15%");
+    loadBtn->setPosition("5%", "75%");
+    loadBtn->onPress([this, fileDialog, pathEdit]() {
+        stopLivePreview();
+        std::string path = pathEdit->getText().toStdString();
+        if (audioPlaylist.loadFromJson(path)) {
+            updatePlaylistDisplay();
+            syncPlaylistToVideoProcessor();
+            statusLabel->setText("Playlist loaded: " + path);
+        } else {
+            statusLabel->setText("Failed to load playlist");
+        }
+        gui.remove(fileDialog);
+    });
+    fileDialog->add(loadBtn);
+
+    auto cancelBtn = tgui::Button::create("Cancel");
+    cancelBtn->setSize("30%", "15%");
+    cancelBtn->setPosition("65%", "75%");
+    cancelBtn->onPress([this, fileDialog]() {
+        gui.remove(fileDialog);
+    });
+    fileDialog->add(cancelBtn);
+
+    gui.add(fileDialog);
 }
 
 void GUI::updatePlaylistDisplay() {
@@ -1754,7 +1870,82 @@ void GUI::updatePreview(const cv::Mat& frame) {
 }
 
 void GUI::handleEvent(const sf::Event& event) {
+    if (const auto* mousePressed = event.getIf<sf::Event::MouseButtonPressed>()) {
+        if (mousePressed->button == sf::Mouse::Button::Left) {
+            startListDrag(sf::Vector2f(static_cast<float>(mousePressed->position.x),
+                                       static_cast<float>(mousePressed->position.y)));
+        }
+    }
+
+    if (const auto* mouseReleased = event.getIf<sf::Event::MouseButtonReleased>()) {
+        if (mouseReleased->button == sf::Mouse::Button::Left) {
+            finishListDrag(sf::Vector2f(static_cast<float>(mouseReleased->position.x),
+                                        static_cast<float>(mouseReleased->position.y)));
+        }
+    }
+
     gui.handleEvent(event);
+}
+
+int GUI::getListBoxIndexAtPosition(const tgui::ListBox::Ptr& listBox, sf::Vector2f mousePos) const {
+    if (!listBox) return -1;
+
+    const sf::Vector2f pos = listBox->getAbsolutePosition();
+    const sf::Vector2f size = listBox->getSize();
+    if (mousePos.x < pos.x || mousePos.x > pos.x + size.x || mousePos.y < pos.y || mousePos.y > pos.y + size.y) {
+        return -1;
+    }
+
+    const int itemCount = listBox->getItemCount();
+    if (itemCount <= 0) return -1;
+
+    const float relativeY = mousePos.y - pos.y;
+    const int index = static_cast<int>((relativeY / size.y) * itemCount);
+    return std::clamp(index, 0, itemCount - 1);
+}
+
+void GUI::startListDrag(sf::Vector2f mousePos) {
+    dragSourceChainIndex = getListBoxIndexAtPosition(chainList, mousePos);
+    if (dragSourceChainIndex >= 0) {
+        isDraggingChainItem = true;
+        return;
+    }
+
+    dragSourcePlaylistIndex = getListBoxIndexAtPosition(playlistBox, mousePos);
+    if (dragSourcePlaylistIndex >= 0) {
+        isDraggingPlaylistItem = true;
+    }
+}
+
+void GUI::finishListDrag(sf::Vector2f mousePos) {
+    if (isDraggingChainItem) {
+        const int targetIndex = getListBoxIndexAtPosition(chainList, mousePos);
+        if (dragSourceChainIndex >= 0 && targetIndex >= 0 && dragSourceChainIndex != targetIndex) {
+            effectChain.moveEffect(static_cast<size_t>(dragSourceChainIndex), static_cast<size_t>(targetIndex));
+            updateChainList();
+            chainList->setSelectedItemByIndex(targetIndex);
+            updateParameterPanel();
+            statusLabel->setText("Effect reordered");
+        }
+    }
+
+    if (isDraggingPlaylistItem) {
+        const int targetIndex = getListBoxIndexAtPosition(playlistBox, mousePos);
+        if (dragSourcePlaylistIndex >= 0 && targetIndex >= 0 && dragSourcePlaylistIndex != targetIndex) {
+            stopLivePreview();
+            if (audioPlaylist.moveTrack(static_cast<size_t>(dragSourcePlaylistIndex), static_cast<size_t>(targetIndex))) {
+                updatePlaylistDisplay();
+                playlistBox->setSelectedItemByIndex(targetIndex);
+                syncPlaylistToVideoProcessor();
+                statusLabel->setText("Playlist reordered");
+            }
+        }
+    }
+
+    isDraggingChainItem = false;
+    isDraggingPlaylistItem = false;
+    dragSourceChainIndex = -1;
+    dragSourcePlaylistIndex = -1;
 }
 
 void GUI::draw() {
