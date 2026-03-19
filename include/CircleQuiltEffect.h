@@ -18,4 +18,10 @@ public:
             "audio_gain"
         };
     }
+
+    float getParameterNominalMax(const std::string& name) const override {
+        if (name == "cells_x" || name == "cells_y") return 64.0f;
+        if (name == "radius_scale" || name == "edge_softness" || name == "blend") return 1.0f;
+        return Effect::getParameterNominalMax(name);
+    }
 };

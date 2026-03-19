@@ -29,4 +29,13 @@ public:
     std::vector<std::string> getParameterNames() const override {
         return {"tileSize", "threshold", "mode", "iterations", "movement", "audioMod", "feedback", "audio_gain"};
     }
+
+    float getParameterNominalMax(const std::string& name) const override {
+        if (name == "tileSize")    return 200.0f;  // pixels
+        if (name == "iterations")  return 20.0f;
+        if (name == "mode")        return 2.0f;    // enum 0-2
+        if (name == "threshold" || name == "movement" || name == "audioMod" ||
+            name == "feedback"   || name == "audio_gain") return 1.0f;
+        return Effect::getParameterNominalMax(name);
+    }
 };

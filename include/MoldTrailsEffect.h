@@ -29,6 +29,18 @@ public:
         };
     }
 
+    float getParameterNominalMax(const std::string& name) const override {
+        if (name == "tint_r" || name == "tint_g" || name == "tint_b") return 255.0f;
+        if (name == "agent_count")   return 10000.0f;
+        if (name == "sensor_angle")  return 90.0f;    // degrees
+        if (name == "sensor_dist")   return 50.0f;    // sim-space pixels
+        if (name == "move_speed")    return 10.0f;
+        if (name == "blur_size")     return 31.0f;
+        if (name == "blend" || name == "decay_rate" || name == "deposit_amount" ||
+            name == "turn_speed"    || name == "sim_scale") return 1.0f;
+        return Effect::getParameterNominalMax(name);
+    }
+
 private:
     struct Agent { float x, y, angle; };
 

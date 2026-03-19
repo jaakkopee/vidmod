@@ -160,10 +160,15 @@ void AutomationWindow::setupUI() {
         }
         
         float minVal = 0.0f;
-        float baseMagnitude = std::abs(baseValue);
-        if (baseMagnitude < 1e-6f) {
-            // Parameters that default to zero (e.g. feedback) still need a usable range.
-            baseMagnitude = 1.0f;
+        // Use the effect's canonical parameter maximum so that all parameters of
+        // the same logical type (e.g. ink_r, ink_g, ink_b → 255) share the same
+        // base, making the multiplier behave consistently across parameters.
+        float baseMagnitude = 1.0f;
+        if (effectChainRef && selectedEffectIndex >= 0) {
+            const auto& effects = effectChainRef->getEffects();
+            if (selectedEffectIndex < static_cast<int>(effects.size())) {
+                baseMagnitude = effects[selectedEffectIndex]->getParameterNominalMax(selectedParam);
+            }
         }
         float maxVal = baseMagnitude * multiplier;
         

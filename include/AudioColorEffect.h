@@ -18,4 +18,9 @@ public:
             "audio_gain"
         };
     }
+
+    float getParameterNominalMax(const std::string& name) const override {
+        if (name == "mode") return 2.0f;          // enum: 0=RGB, 1=HSV dominant, 2=HSV spectrum
+        return Effect::getParameterNominalMax(name);
+    }
 };

@@ -41,4 +41,15 @@ public:
     }
     
     virtual std::vector<std::string> getParameterNames() const = 0;
+
+    // Returns the canonical maximum value for a parameter, used as the base for
+    // automation range computation (so the multiplier is consistent across all
+    // parameters of the same logical type, e.g. all colour channels → 255).
+    // Subclasses should override this for any parameter whose natural maximum
+    // differs from std::max(1.0f, |currentValue|).
+    virtual float getParameterNominalMax(const std::string& name) const {
+        auto it = parameters.find(name);
+        float v = (it != parameters.end()) ? std::abs(it->second) : 1.0f;
+        return std::max(1.0f, v);
+    }
 };
