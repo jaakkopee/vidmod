@@ -154,26 +154,32 @@ bool AudioPlaylist::removeTrack(size_t index) {
     
     std::string removedFile = tracks[index].filePath;
     tracks.erase(tracks.begin() + index);
-    
-    // Rebuild the entire buffer without the removed track
-    if (tracks.empty()) {
+
+    // Rebuild from existing in-memory samples to avoid reloading files from disk.
+    if (tracks.empty() || !audioBuffer) {
         audioBuffer.reset();
     } else {
-        // Need to reload all tracks - this is expensive but necessary
-        // Store track info temporarily
-        std::vector<std::string> trackPaths;
-        for (const auto& track : tracks) {
-            trackPaths.push_back(track.filePath);
+        const std::vector<float> oldData = audioBuffer->getData();
+        std::vector<float> newData;
+        newData.reserve(oldData.size());
+
+        size_t writePos = 0;
+        for (auto& track : tracks) {
+            const size_t oldStart = track.startIndex;
+            const size_t oldEnd = track.endIndex;
+            if (oldStart >= oldData.size() || oldEnd > oldData.size() || oldEnd < oldStart) {
+                std::cerr << "Error: Invalid track bounds while removing track" << std::endl;
+                return false;
+            }
+
+            const size_t length = oldEnd - oldStart;
+            newData.insert(newData.end(), oldData.begin() + static_cast<long>(oldStart), oldData.begin() + static_cast<long>(oldEnd));
+            track.startIndex = writePos;
+            track.endIndex = writePos + length;
+            writePos += length;
         }
-        
-        // Clear and rebuild
-        tracks.clear();
-        audioBuffer.reset();
-        
-        // Reload all tracks
-        for (const auto& path : trackPaths) {
-            addTrack(path);
-        }
+
+        audioBuffer = std::make_unique<AudioBuffer>(newData, targetSampleRate);
     }
     
     std::cout << "Track removed: " << removedFile << std::endl;
@@ -269,25 +275,37 @@ bool AudioPlaylist::moveTrack(size_t fromIndex, size_t toIndex) {
         return true;
     }
 
-    std::vector<std::string> reorderedPaths;
-    reorderedPaths.reserve(tracks.size());
-    for (const auto& track : tracks) {
-        reorderedPaths.push_back(track.filePath);
+    if (!audioBuffer) {
+        std::cerr << "Error: No audio buffer available for reordering" << std::endl;
+        return false;
     }
 
-    const std::string movedPath = reorderedPaths[fromIndex];
-    reorderedPaths.erase(reorderedPaths.begin() + fromIndex);
-    reorderedPaths.insert(reorderedPaths.begin() + toIndex, movedPath);
+    const std::vector<float> oldData = audioBuffer->getData();
 
-    tracks.clear();
-    audioBuffer.reset();
+    AudioTrack moved = tracks[fromIndex];
+    tracks.erase(tracks.begin() + fromIndex);
+    tracks.insert(tracks.begin() + toIndex, std::move(moved));
 
-    for (const auto& path : reorderedPaths) {
-        if (!addTrack(path)) {
-            std::cerr << "Failed to rebuild reordered playlist" << std::endl;
+    std::vector<float> newData;
+    newData.reserve(oldData.size());
+
+    size_t writePos = 0;
+    for (auto& track : tracks) {
+        const size_t oldStart = track.startIndex;
+        const size_t oldEnd = track.endIndex;
+        if (oldStart >= oldData.size() || oldEnd > oldData.size() || oldEnd < oldStart) {
+            std::cerr << "Error: Invalid track bounds while moving track" << std::endl;
             return false;
         }
+
+        const size_t length = oldEnd - oldStart;
+        newData.insert(newData.end(), oldData.begin() + static_cast<long>(oldStart), oldData.begin() + static_cast<long>(oldEnd));
+        track.startIndex = writePos;
+        track.endIndex = writePos + length;
+        writePos += length;
     }
+
+    audioBuffer = std::make_unique<AudioBuffer>(newData, targetSampleRate);
     
     std::cout << "Track moved from position " << fromIndex << " to " << toIndex << std::endl;
     
