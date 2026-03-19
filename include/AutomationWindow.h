@@ -85,6 +85,10 @@ public:
     // JSON serialization for optional save/load together with effect chain files
     std::string exportAutomationJson() const;
     bool importAutomationJson(const std::string& jsonText);
+    void moveEffectAutomation(int fromIndex, int toIndex);
+    void insertEffectAutomation(int atIndex);
+    void removeEffectAutomation(int atIndex);
+    void clearAutomationData();
     
     void setTotalFrames(int frames) { totalFrames = frames; }
     int getTotalFrames() const { return totalFrames; }

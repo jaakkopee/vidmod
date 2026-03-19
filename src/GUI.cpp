@@ -546,6 +546,10 @@ void GUI::addEffectToChain(const std::string& effectName) {
     
     if (effect) {
         effectChain.addEffect(effect);
+        if (automationWindow) {
+            const int newIndex = static_cast<int>(effectChain.getEffects().size()) - 1;
+            automationWindow->insertEffectAutomation(newIndex);
+        }
         updateChainList();
         statusLabel->setText("Added " + effectName + " to chain");
     }
@@ -555,6 +559,9 @@ void GUI::removeSelectedEffect() {
     int selected = chainList->getSelectedItemIndex();
     if (selected >= 0) {
         effectChain.removeEffect(selected);
+        if (automationWindow) {
+            automationWindow->removeEffectAutomation(selected);
+        }
         updateChainList();
         paramPanel->removeAllWidgets();
         statusLabel->setText("Effect removed");
@@ -1263,6 +1270,11 @@ void GUI::loadEffectChain() {
         }
 
         if (ok) {
+            if (automationWindow) {
+                if (!loadedAutomation) {
+                    automationWindow->clearAutomationData();
+                }
+            }
             updateChainList();
             updateParameterPanel();
             if (loadAutomation) {
@@ -2005,6 +2017,9 @@ void GUI::finishListDrag(sf::Vector2f mousePos) {
         const int targetIndex = getListBoxIndexAtPosition(chainList, mousePos);
         if (dragSourceChainIndex >= 0 && targetIndex >= 0 && dragSourceChainIndex != targetIndex) {
             effectChain.moveEffect(static_cast<size_t>(dragSourceChainIndex), static_cast<size_t>(targetIndex));
+            if (automationWindow) {
+                automationWindow->moveEffectAutomation(dragSourceChainIndex, targetIndex);
+            }
             updateChainList();
             chainList->setSelectedItemByIndex(targetIndex);
             updateParameterPanel();

@@ -359,6 +359,180 @@ bool AutomationWindow::importAutomationJson(const std::string& jsonText) {
     }
 }
 
+void AutomationWindow::moveEffectAutomation(int fromIndex, int toIndex) {
+    if (fromIndex == toIndex || fromIndex < 0 || toIndex < 0) {
+        return;
+    }
+
+    const auto remapIndex = [fromIndex, toIndex](int idx) {
+        if (idx == fromIndex) {
+            return toIndex;
+        }
+
+        if (fromIndex < toIndex) {
+            if (idx > fromIndex && idx <= toIndex) {
+                return idx - 1;
+            }
+        } else {
+            if (idx >= toIndex && idx < fromIndex) {
+                return idx + 1;
+            }
+        }
+
+        return idx;
+    };
+
+    auto remapAutomationMap = [&remapIndex](auto& indexMap) {
+        using MapType = std::decay_t<decltype(indexMap)>;
+        MapType remapped;
+        for (auto& entry : indexMap) {
+            remapped[remapIndex(entry.first)] = std::move(entry.second);
+        }
+        indexMap = std::move(remapped);
+    };
+
+    remapAutomationMap(effectAutomations);
+    remapAutomationMap(parameterRangeIndices);
+    remapAutomationMap(parameterBaseValues);
+
+    if (selectedEffectIndex >= 0) {
+        selectedEffectIndex = remapIndex(selectedEffectIndex);
+    }
+
+    if (!effectChainRef) {
+        return;
+    }
+
+    effectComboBox->removeAllItems();
+    const auto& effects = effectChainRef->getEffects();
+    for (int i = 0; i < static_cast<int>(effects.size()); ++i) {
+        std::string label = "[" + std::to_string(i) + "] " + effects[i]->getName();
+        effectComboBox->addItem(label);
+    }
+
+    if (selectedEffectIndex >= 0 && selectedEffectIndex < static_cast<int>(effects.size())) {
+        effectComboBox->setSelectedItemByIndex(selectedEffectIndex);
+        updateParamList();
+    } else {
+        selectedEffectIndex = -1;
+        selectedParam.clear();
+        paramComboBox->removeAllItems();
+    }
+}
+
+void AutomationWindow::insertEffectAutomation(int atIndex) {
+    if (atIndex < 0) {
+        return;
+    }
+
+    auto shiftUpMap = [atIndex](auto& indexMap) {
+        using MapType = std::decay_t<decltype(indexMap)>;
+        MapType remapped;
+        for (auto& entry : indexMap) {
+            const int mappedIndex = (entry.first >= atIndex) ? (entry.first + 1) : entry.first;
+            remapped[mappedIndex] = std::move(entry.second);
+        }
+        indexMap = std::move(remapped);
+    };
+
+    shiftUpMap(effectAutomations);
+    shiftUpMap(parameterRangeIndices);
+    shiftUpMap(parameterBaseValues);
+
+    if (selectedEffectIndex >= atIndex) {
+        selectedEffectIndex += 1;
+    }
+
+    if (!effectChainRef) {
+        return;
+    }
+
+    effectComboBox->removeAllItems();
+    const auto& effects = effectChainRef->getEffects();
+    for (int i = 0; i < static_cast<int>(effects.size()); ++i) {
+        std::string label = "[" + std::to_string(i) + "] " + effects[i]->getName();
+        effectComboBox->addItem(label);
+    }
+
+    if (selectedEffectIndex >= 0 && selectedEffectIndex < static_cast<int>(effects.size())) {
+        effectComboBox->setSelectedItemByIndex(selectedEffectIndex);
+        updateParamList();
+    } else {
+        selectedEffectIndex = -1;
+        selectedParam.clear();
+        paramComboBox->removeAllItems();
+    }
+}
+
+void AutomationWindow::removeEffectAutomation(int atIndex) {
+    if (atIndex < 0) {
+        return;
+    }
+
+    auto shiftDownMap = [atIndex](auto& indexMap) {
+        using MapType = std::decay_t<decltype(indexMap)>;
+        MapType remapped;
+        for (auto& entry : indexMap) {
+            if (entry.first == atIndex) {
+                continue;
+            }
+            const int mappedIndex = (entry.first > atIndex) ? (entry.first - 1) : entry.first;
+            remapped[mappedIndex] = std::move(entry.second);
+        }
+        indexMap = std::move(remapped);
+    };
+
+    shiftDownMap(effectAutomations);
+    shiftDownMap(parameterRangeIndices);
+    shiftDownMap(parameterBaseValues);
+
+    if (selectedEffectIndex == atIndex) {
+        selectedEffectIndex = -1;
+        selectedParam.clear();
+    } else if (selectedEffectIndex > atIndex) {
+        selectedEffectIndex -= 1;
+    }
+
+    if (!effectChainRef) {
+        return;
+    }
+
+    effectComboBox->removeAllItems();
+    const auto& effects = effectChainRef->getEffects();
+    for (int i = 0; i < static_cast<int>(effects.size()); ++i) {
+        std::string label = "[" + std::to_string(i) + "] " + effects[i]->getName();
+        effectComboBox->addItem(label);
+    }
+
+    if (selectedEffectIndex >= 0 && selectedEffectIndex < static_cast<int>(effects.size())) {
+        effectComboBox->setSelectedItemByIndex(selectedEffectIndex);
+        updateParamList();
+    } else {
+        selectedEffectIndex = -1;
+        selectedParam.clear();
+        paramComboBox->removeAllItems();
+    }
+}
+
+void AutomationWindow::clearAutomationData() {
+    effectAutomations.clear();
+    parameterRangeIndices.clear();
+    parameterBaseValues.clear();
+    selectedEffectIndex = -1;
+    selectedParam.clear();
+
+    if (effectChainRef) {
+        effectComboBox->removeAllItems();
+        const auto& effects = effectChainRef->getEffects();
+        for (int i = 0; i < static_cast<int>(effects.size()); ++i) {
+            std::string label = "[" + std::to_string(i) + "] " + effects[i]->getName();
+            effectComboBox->addItem(label);
+        }
+    }
+
+    paramComboBox->removeAllItems();
+}
+
 void AutomationWindow::handleEvents() {
     if (!window.isOpen()) return;
     
