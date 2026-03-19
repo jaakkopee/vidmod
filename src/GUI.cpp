@@ -2051,6 +2051,12 @@ void GUI::draw() {
         window.draw(previewSprite, states);
     }
     
+    // Update parameter display values during playback/rendering to reflect automation
+    // This works for live preview, image loop rendering, and video rendering with automation
+    if (isLivePreviewPlaying || isProcessing) {
+        updateParameterDisplayValues();
+    }
+    
     // Update automation window if open
     updateAutomationWindow();
 }
