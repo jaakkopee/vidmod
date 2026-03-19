@@ -268,14 +268,26 @@ bool AudioPlaylist::moveTrack(size_t fromIndex, size_t toIndex) {
     if (fromIndex == toIndex) {
         return true;
     }
-    
-    // Move track
-    AudioTrack track = std::move(tracks[fromIndex]);
-    tracks.erase(tracks.begin() + fromIndex);
-    tracks.insert(tracks.begin() + toIndex, std::move(track));
-    
-    // Rebuild buffer to update indices
-    rebuildBuffer();
+
+    std::vector<std::string> reorderedPaths;
+    reorderedPaths.reserve(tracks.size());
+    for (const auto& track : tracks) {
+        reorderedPaths.push_back(track.filePath);
+    }
+
+    const std::string movedPath = reorderedPaths[fromIndex];
+    reorderedPaths.erase(reorderedPaths.begin() + fromIndex);
+    reorderedPaths.insert(reorderedPaths.begin() + toIndex, movedPath);
+
+    tracks.clear();
+    audioBuffer.reset();
+
+    for (const auto& path : reorderedPaths) {
+        if (!addTrack(path)) {
+            std::cerr << "Failed to rebuild reordered playlist" << std::endl;
+            return false;
+        }
+    }
     
     std::cout << "Track moved from position " << fromIndex << " to " << toIndex << std::endl;
     
