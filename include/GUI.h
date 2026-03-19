@@ -86,6 +86,7 @@ private:
     bool isDraggingPlaylistItem;
     int dragSourceChainIndex;
     int dragSourcePlaylistIndex;
+    bool isEditingParameterField;
     
     void setupUI();
     void addEffectToChain(const std::string& effectName);

@@ -96,7 +96,7 @@ int runFfmpegWithProgressPipe(const std::string& ffmpegCommand,
 }
 }
 
-GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), renderRangeStart(0.0f), renderRangeEnd(1.0f), showingPreview(false), isProcessing(false), isAudioMuxing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), isLivePreviewPlaying(false), shouldStopLivePreview(false), livePreviewAudioDurationSeconds(0.0f), currentDisplayFrame(0), isDraggingChainItem(false), isDraggingPlaylistItem(false), dragSourceChainIndex(-1), dragSourcePlaylistIndex(-1) {
+GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), renderRangeStart(0.0f), renderRangeEnd(1.0f), showingPreview(false), isProcessing(false), isAudioMuxing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), isLivePreviewPlaying(false), shouldStopLivePreview(false), livePreviewAudioDurationSeconds(0.0f), currentDisplayFrame(0), isDraggingChainItem(false), isDraggingPlaylistItem(false), dragSourceChainIndex(-1), dragSourcePlaylistIndex(-1), isEditingParameterField(false) {
     automationWindow = std::make_unique<AutomationWindow>(1000);
     setupUI();
 }
@@ -576,6 +576,7 @@ void GUI::updateChainList() {
 
 void GUI::updateParameterPanel() {
     paramPanel->removeAllWidgets();
+    isEditingParameterField = false;
     
     int selected = chainList->getSelectedItemIndex();
     if (selected < 0) return;
@@ -599,12 +600,17 @@ void GUI::updateParameterPanel() {
         // Get current value (may be automated)
         float currentValue = effect->getParameter(paramName);
         editBox->setText(tgui::String(currentValue));
+
+        editBox->onFocus([this]() {
+            isEditingParameterField = true;
+        });
         
         // Save parameter on Return key
         editBox->onReturnKeyPress([this, effect, paramName, editBox]() {
             try {
                 float value = std::stof(editBox->getText().toStdString());
                 effect->setParameter(paramName, value);
+                isEditingParameterField = false;
                 statusLabel->setText("Updated " + paramName);
                 std::cout << "Parameter " << paramName << " updated to " << value << std::endl;
             } catch (...) {
@@ -614,6 +620,7 @@ void GUI::updateParameterPanel() {
         
         // Also save parameter when the edit box loses focus
         editBox->onUnfocus([this, effect, paramName, editBox]() {
+            isEditingParameterField = false;
             try {
                 float value = std::stof(editBox->getText().toStdString());
                 effect->setParameter(paramName, value);
@@ -2368,6 +2375,10 @@ void GUI::applyAutomationAtFrame(int frameNumber) {
 }
 
 void GUI::updateParameterDisplayValues() {
+    if (isEditingParameterField) {
+        return;
+    }
+
     int selected = chainList->getSelectedItemIndex();
     if (selected < 0) return;
     
