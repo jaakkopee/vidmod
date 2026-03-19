@@ -1890,21 +1890,24 @@ void GUI::handleEvent(const sf::Event& event) {
 int GUI::getListBoxIndexAtPosition(const tgui::ListBox::Ptr& listBox, sf::Vector2f mousePos) const {
     if (!listBox) return -1;
 
-    if (!listBox->isMouseOnWidget({mousePos.x, mousePos.y})) {
-        return -1;
-    }
-
-    const int itemCount = listBox->getItemCount();
+    const int itemCount = static_cast<int>(listBox->getItemCount());
     if (itemCount <= 0) return -1;
 
     const sf::Vector2f pos = listBox->getAbsolutePosition();
+    const sf::Vector2f size = listBox->getSize();
+    if (mousePos.x < pos.x || mousePos.x > (pos.x + size.x) ||
+        mousePos.y < pos.y || mousePos.y > (pos.y + size.y)) {
+        return -1;
+    }
+
     const float itemHeight = static_cast<float>(listBox->getItemHeight());
     if (itemHeight <= 0.0f) {
         return -1;
     }
 
     const float relativeY = mousePos.y - pos.y;
-    const int index = static_cast<int>(relativeY / itemHeight);
+    const int topItemOffset = static_cast<int>(listBox->getScrollbar()->getValue());
+    const int index = topItemOffset + static_cast<int>(relativeY / itemHeight);
     return std::clamp(index, 0, itemCount - 1);
 }
 
