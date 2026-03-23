@@ -201,11 +201,23 @@ void AutomationWindow::setupUI() {
     parameterBaseValues.clear();
 }
 
+void AutomationWindow::recalculateCanvasLayout() {
+    auto wsz = window.getSize();
+    float W = static_cast<float>(wsz.x);
+    float H = static_cast<float>(wsz.y);
+    // Reserve 90px at top for TGUI controls, 25px at bottom for frame labels.
+    canvasPos  = sf::Vector2f(10.f, 90.f);
+    canvasSize = sf::Vector2f(W - 20.f, std::max(50.f, H - 115.f));
+    canvasBackground.setPosition(canvasPos);
+    canvasBackground.setSize(canvasSize);
+}
+
 void AutomationWindow::open(EffectChain& chain) {
     if (!window.isOpen()) {
         window.create(sf::VideoMode({800, 400}), "Parameter Automation");
     }
-    
+    recalculateCanvasLayout();
+
     effectChainRef = &chain;
     
     // Populate effect list with indices
@@ -533,20 +545,40 @@ void AutomationWindow::clearAutomationData() {
     paramComboBox->removeAllItems();
 }
 
+void AutomationWindow::setAudioGuideMarkers(const std::vector<int>& trackBoundaries,
+                                            const std::vector<int>& rhythmSubsections) {
+    trackBoundaryFrames = trackBoundaries;
+    rhythmSubsectionFrames = rhythmSubsections;
+}
+
 void AutomationWindow::handleEvents() {
     if (!window.isOpen()) return;
-    
+
+    recalculateCanvasLayout();
+
     while (const auto event = window.pollEvent()) {
         gui.handleEvent(event.value());
-        
+
         if (event->is<sf::Event::Closed>()) {
             window.close();
+        }
+
+        if (const auto* resized = event->getIf<sf::Event::Resized>()) {
+            sf::View view(sf::Vector2f(0.f, 0.f),
+                          sf::Vector2f(static_cast<float>(resized->size.x),
+                                       static_cast<float>(resized->size.y)));
+            view.setCenter({static_cast<float>(resized->size.x) / 2.f,
+                            static_cast<float>(resized->size.y) / 2.f});
+            window.setView(view);
+            recalculateCanvasLayout();
         }
         
         // Track mouse position for hover effects
         if (const auto* mouseMoved = event->getIf<sf::Event::MouseMoved>()) {
-            float mx = static_cast<float>(mouseMoved->position.x);
-            float my = static_cast<float>(mouseMoved->position.y);
+            sf::Vector2f mappedMoved = window.mapPixelToCoords(
+                sf::Vector2i(mouseMoved->position.x, mouseMoved->position.y));
+            float mx = mappedMoved.x;
+            float my = mappedMoved.y;
             
             if (mx >= canvasPos.x && mx <= canvasPos.x + canvasSize.x &&
                 my >= canvasPos.y && my <= canvasPos.y + canvasSize.y) {
@@ -574,8 +606,10 @@ void AutomationWindow::handleEvents() {
         
         // Handle canvas interactions
         if (const auto* mousePressed = event->getIf<sf::Event::MouseButtonPressed>()) {
-            float mx = static_cast<float>(mousePressed->position.x);
-            float my = static_cast<float>(mousePressed->position.y);
+            sf::Vector2f mappedPressed = window.mapPixelToCoords(
+                sf::Vector2i(mousePressed->position.x, mousePressed->position.y));
+            float mx = mappedPressed.x;
+            float my = mappedPressed.y;
             
             if (mx >= canvasPos.x && mx <= canvasPos.x + canvasSize.x &&
                 my >= canvasPos.y && my <= canvasPos.y + canvasSize.y) {
@@ -700,18 +734,21 @@ void AutomationWindow::updateHoveredKeyframe(sf::Vector2f localPos) {
 
 void AutomationWindow::draw() {
     if (!window.isOpen()) return;
-    
+
+    recalculateCanvasLayout();
+
     window.clear(sf::Color(50, 50, 55));
-    
+
     // Draw canvas background
     window.draw(canvasBackground);
+    // Keep timeline guides visible at all times.
+    drawGridBackground();
     
     // Draw automation visualization if effect and param are selected
     if (selectedEffectIndex >= 0 && !selectedParam.empty()) {
         auto& automation = effectAutomations[selectedEffectIndex][selectedParam];
         
-        // Draw grid and scale
-        drawGridBackground();
+        // Draw scale and automation content
         drawValueScale();
         
         // Draw connecting lines between nodes
@@ -752,17 +789,31 @@ void AutomationWindow::drawGridBackground() {
         window.draw(gridLine);
     }
     
-    // Draw vertical grid lines (time divisions)
-    const int timeGridDivisions = 10;
-    for (int i = 0; i <= timeGridDivisions; ++i) {
-        float x = canvasPos.x + (canvasSize.x / timeGridDivisions) * i;
-        
-        sf::VertexArray gridLine(sf::PrimitiveType::Lines, 2);
-        gridLine[0].position = sf::Vector2f(x, canvasPos.y);
-        gridLine[0].color = sf::Color(70, 70, 80);
-        gridLine[1].position = sf::Vector2f(x, canvasPos.y + canvasSize.y);
-        gridLine[1].color = sf::Color(70, 70, 80);
-        window.draw(gridLine);
+    auto frameToCanvasX = [this](int frame) {
+        if (totalFrames <= 1) return canvasPos.x;
+        float norm = std::clamp(frame / static_cast<float>(totalFrames - 1), 0.0f, 1.0f);
+        return canvasPos.x + norm * canvasSize.x;
+    };
+
+    // Thin rhythm subsection markers.
+    for (int frame : rhythmSubsectionFrames) {
+        float x = frameToCanvasX(frame);
+
+        sf::VertexArray rhythmLine(sf::PrimitiveType::Lines, 2);
+        rhythmLine[0].position = sf::Vector2f(x, canvasPos.y);
+        rhythmLine[0].color = sf::Color(80, 150, 255, 170);
+        rhythmLine[1].position = sf::Vector2f(x, canvasPos.y + canvasSize.y);
+        rhythmLine[1].color = sf::Color(80, 150, 255, 170);
+        window.draw(rhythmLine);
+    }
+
+    // Bold track-length boundary markers.
+    for (int frame : trackBoundaryFrames) {
+        float x = frameToCanvasX(frame);
+        sf::RectangleShape boundary(sf::Vector2f(3.0f, canvasSize.y));
+        boundary.setPosition(sf::Vector2f(x - 1.5f, canvasPos.y));
+        boundary.setFillColor(sf::Color(70, 255, 120, 220));
+        window.draw(boundary);
     }
 }
 

@@ -24,6 +24,7 @@
 #include <mutex>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 
 class GUI {
 private:
@@ -87,6 +88,7 @@ private:
     int dragSourceChainIndex;
     int dragSourcePlaylistIndex;
     bool isEditingParameterField;
+    std::size_t automationGuideFingerprint;
     
     void setupUI();
     void addEffectToChain(const std::string& effectName);
@@ -120,6 +122,7 @@ private:
     void openAutomationWindow();
     void updateAutomationWindow();
     void syncAutomationTimeline(float previewFps, AudioBuffer* activeAudioBuffer, float durationOverride = -1.0f);
+    void updateAutomationGuideMarkers(AudioBuffer* activeAudioBuffer);
     int getAutomationFrameForPosition(float previewFps, AudioBuffer* activeAudioBuffer, float durationOverride = -1.0f) const;
     int mapRenderFrameToAutomationFrame(int frameIndex, int totalRenderFrames) const;
     void applyAutomationAtFrame(int frameNumber);

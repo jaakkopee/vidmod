@@ -23,6 +23,8 @@ private:
     int selectedEffectIndex;  // Index of effect instance in the chain (-1 if none)
     std::string selectedParam;
     int totalFrames;
+    std::vector<int> trackBoundaryFrames;
+    std::vector<int> rhythmSubsectionFrames;
     
     // Reference to effect chain
     EffectChain* effectChainRef;
@@ -46,7 +48,22 @@ private:
     sf::Vector2i lastMousePos;
     sf::Vector2f mouseLocalPos;
     bool mouseInCanvas = false;
-    
+
+    // Zoom / Pan viewport
+    float zoomX    = 1.0f;   // horizontal zoom (1=full, 16=max)
+    float zoomY    = 1.0f;   // vertical / value-axis zoom
+    float panX     = 0.0f;   // normalized start of visible X window [0, 1-1/zoomX]
+    float panYOff  = 0.0f;   // normalized start of visible Y window [0, 1-1/zoomY]
+    bool  isPanning      = false;
+    float panStartX      = 0.0f;
+    float panStartMouseX = 0.0f;
+
+    // TGUI zoom/pan controls
+    tgui::Slider::Ptr zoomXSlider;
+    tgui::Slider::Ptr zoomYSlider;
+    tgui::Slider::Ptr panXSlider;
+    tgui::Label::Ptr  viewInfoLabel;
+
     // Node visualization constants
     static constexpr float NODE_RADIUS = 8.0f;
     static constexpr float NODE_HOVER_RADIUS = 10.0f;
@@ -54,6 +71,7 @@ private:
     
     // Helper methods
     void setupUI();
+    void recalculateCanvasLayout();
     void updateParamList();
     void drawAutomationCanvas();
     void drawGridBackground();
@@ -62,7 +80,15 @@ private:
     void drawConnectingLines();
     void handleCanvasClick(sf::Vector2f pos, bool doubleClick);
     void handleCanvasDrag(sf::Vector2f pos);
-    
+
+    // Viewport coordinate helpers
+    float frameToCanvasX(int frame) const;
+    float canvasXToFrame(float localX) const;
+    float normValToCanvasY(float normVal) const;
+    float canvasYToNormVal(float localY) const;
+    void  clampView();
+    void  updateViewInfo();
+
     // Utility
     int findKeyframeAtPosition(sf::Vector2f localPos);
     void updateHoveredKeyframe(sf::Vector2f localPos);
@@ -92,4 +118,6 @@ public:
     
     void setTotalFrames(int frames) { totalFrames = frames; }
     int getTotalFrames() const { return totalFrames; }
+    void setAudioGuideMarkers(const std::vector<int>& trackBoundaries,
+                              const std::vector<int>& rhythmSubsections);
 };

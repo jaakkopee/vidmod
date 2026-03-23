@@ -13,10 +13,232 @@
 #include <chrono>
 #include <sys/wait.h>  // for WEXITSTATUS
 #include <nlohmann/json.hpp>
+#include <fftw3.h>
 
 using json = nlohmann::json;
 
 namespace {
+constexpr int kAutomationTimelineFrames = 1000;
+
+std::size_t hashCombine(std::size_t seed, std::size_t value) {
+    return seed ^ (value + 0x9e3779b97f4a7c15ULL + (seed << 6U) + (seed >> 2U));
+}
+
+float hzToMel(float hz) {
+    return 2595.0f * std::log10(1.0f + hz / 700.0f);
+}
+
+float melToHz(float mel) {
+    return 700.0f * (std::pow(10.0f, mel / 2595.0f) - 1.0f);
+}
+
+float estimateRootHzFromOvertones(const std::vector<float>& audio, int sampleRate) {
+    constexpr int fftSize = 16384;
+    if (audio.size() < 2048 || sampleRate <= 0) {
+        return 110.0f;
+    }
+
+    std::vector<double> input(fftSize, 0.0);
+    const std::size_t stride = std::max<std::size_t>(1, audio.size() / static_cast<std::size_t>(fftSize));
+    for (int i = 0; i < fftSize; ++i) {
+        std::size_t idx = std::min(audio.size() - 1, static_cast<std::size_t>(i) * stride);
+        float hann = 0.5f * (1.0f - std::cos(2.0f * static_cast<float>(M_PI) * i / (fftSize - 1)));
+        input[i] = static_cast<double>(audio[idx] * hann);
+    }
+
+    fftw_complex* out = fftw_alloc_complex(static_cast<std::size_t>(fftSize / 2 + 1));
+    if (!out) {
+        return 110.0f;
+    }
+    fftw_plan plan = fftw_plan_dft_r2c_1d(fftSize, input.data(), out, FFTW_ESTIMATE);
+    fftw_execute(plan);
+
+    std::vector<float> mag(static_cast<std::size_t>(fftSize / 2 + 1), 0.0f);
+    for (std::size_t i = 0; i < mag.size(); ++i) {
+        mag[i] = std::sqrt(static_cast<float>(out[i][0] * out[i][0] + out[i][1] * out[i][1]));
+    }
+
+    fftw_destroy_plan(plan);
+    fftw_free(out);
+
+    float bestHz = 110.0f;
+    float bestScore = 0.0f;
+    const float hzPerBin = static_cast<float>(sampleRate) / fftSize;
+    const int minBin = std::max(1, static_cast<int>(std::floor(50.0f / hzPerBin)));
+    const int maxBin = std::min(static_cast<int>(mag.size()) - 1, static_cast<int>(std::ceil(500.0f / hzPerBin)));
+
+    for (int b = minBin; b <= maxBin; ++b) {
+        float score = 0.0f;
+        for (int h = 1; h <= 6; ++h) {
+            int hb = b * h;
+            if (hb >= static_cast<int>(mag.size())) {
+                break;
+            }
+            score += mag[hb] / static_cast<float>(h);
+        }
+        if (score > bestScore) {
+            bestScore = score;
+            bestHz = b * hzPerBin;
+        }
+    }
+
+    return std::clamp(bestHz, 50.0f, 500.0f);
+}
+
+std::vector<float> buildRootAdjustedMelCenters(float rootHz,
+                                               int bandCount,
+                                               float minHz,
+                                               float maxHz) {
+    std::vector<float> centers;
+    centers.reserve(static_cast<std::size_t>(bandCount));
+
+    const float minMel = hzToMel(minHz);
+    const float maxMel = hzToMel(maxHz);
+
+    for (int i = 0; i < bandCount; ++i) {
+        float t = (i + 1) / static_cast<float>(bandCount + 1);
+        float mel = minMel + t * (maxMel - minMel);
+        float melHz = melToHz(mel);
+
+        int nearestHarm = std::max(1, static_cast<int>(std::lround(melHz / std::max(rootHz, 1.0f))));
+        float harmonicHz = rootHz * nearestHarm;
+        harmonicHz = std::clamp(harmonicHz, minHz, maxHz);
+
+        centers.push_back(std::clamp(0.65f * melHz + 0.35f * harmonicHz, minHz, maxHz));
+    }
+
+    return centers;
+}
+
+std::vector<int> extractRhythmSubsectionsFromAudio(const AudioBuffer& audioBuffer, int totalFrames) {
+    const std::vector<float>& samples = audioBuffer.getData();
+    const int sampleRate = audioBuffer.getSampleRate();
+    if (samples.size() < 4096 || sampleRate <= 0 || totalFrames <= 1) {
+        return {};
+    }
+
+    constexpr int fftSize = 1024;
+    constexpr int hop = 512;
+    constexpr int bandCount = 16;
+
+    const float rootHz = estimateRootHzFromOvertones(samples, sampleRate);
+    const std::vector<float> centers = buildRootAdjustedMelCenters(rootHz, bandCount, 60.0f, 7000.0f);
+
+    std::vector<float> freqs(static_cast<std::size_t>(fftSize / 2 + 1));
+    for (int i = 0; i <= fftSize / 2; ++i) {
+        freqs[static_cast<std::size_t>(i)] = (static_cast<float>(sampleRate) * i) / fftSize;
+    }
+
+    std::vector<std::vector<float>> gammatoneWeights(static_cast<std::size_t>(bandCount),
+                                                     std::vector<float>(freqs.size(), 0.0f));
+    for (int b = 0; b < bandCount; ++b) {
+        float fc = centers[static_cast<std::size_t>(b)];
+        float erb = 24.7f * (4.37e-3f * fc + 1.0f);
+        float bw = std::max(50.0f, 1.5f * erb);
+        for (std::size_t k = 0; k < freqs.size(); ++k) {
+            float d = (freqs[k] - fc) / bw;
+            gammatoneWeights[static_cast<std::size_t>(b)][k] = 1.0f / (1.0f + std::pow(d, 4.0f));
+        }
+    }
+
+    const std::size_t frameCount = 1 + (samples.size() - fftSize) / hop;
+    std::vector<float> flux;
+    flux.reserve(frameCount);
+    std::vector<float> prevBandEnergy(static_cast<std::size_t>(bandCount), 0.0f);
+
+    std::vector<double> in(fftSize, 0.0);
+    fftw_complex* out = fftw_alloc_complex(static_cast<std::size_t>(fftSize / 2 + 1));
+    if (!out) {
+        return {};
+    }
+    fftw_plan plan = fftw_plan_dft_r2c_1d(fftSize, in.data(), out, FFTW_ESTIMATE);
+
+    for (std::size_t fi = 0; fi < frameCount; ++fi) {
+        const std::size_t start = fi * static_cast<std::size_t>(hop);
+        for (int n = 0; n < fftSize; ++n) {
+            float hann = 0.5f * (1.0f - std::cos(2.0f * static_cast<float>(M_PI) * n / (fftSize - 1)));
+            in[static_cast<std::size_t>(n)] = samples[start + static_cast<std::size_t>(n)] * hann;
+        }
+
+        fftw_execute(plan);
+
+        std::vector<float> mag(freqs.size(), 0.0f);
+        for (std::size_t k = 0; k < mag.size(); ++k) {
+            mag[k] = std::sqrt(static_cast<float>(out[k][0] * out[k][0] + out[k][1] * out[k][1]));
+        }
+
+        std::vector<float> bandEnergy(static_cast<std::size_t>(bandCount), 0.0f);
+        for (int b = 0; b < bandCount; ++b) {
+            float sum = 0.0f;
+            for (std::size_t k = 1; k < mag.size(); ++k) {
+                sum += mag[k] * gammatoneWeights[static_cast<std::size_t>(b)][k];
+            }
+            bandEnergy[static_cast<std::size_t>(b)] = sum;
+        }
+
+        float spectralFlux = 0.0f;
+        for (int b = 0; b < bandCount; ++b) {
+            float d = bandEnergy[static_cast<std::size_t>(b)] - prevBandEnergy[static_cast<std::size_t>(b)];
+            if (d > 0.0f) {
+                spectralFlux += d;
+            }
+            prevBandEnergy[static_cast<std::size_t>(b)] = bandEnergy[static_cast<std::size_t>(b)];
+        }
+        flux.push_back(spectralFlux);
+    }
+
+    fftw_destroy_plan(plan);
+    fftw_free(out);
+
+    if (flux.empty()) {
+        return {};
+    }
+
+    // Smooth and adaptive threshold.
+    float mean = 0.0f;
+    for (float v : flux) {
+        mean += v;
+    }
+    mean /= static_cast<float>(flux.size());
+
+    float var = 0.0f;
+    for (float v : flux) {
+        float d = v - mean;
+        var += d * d;
+    }
+    float stddev = std::sqrt(var / static_cast<float>(flux.size()));
+    float threshold = mean + std::max(0.15f * mean, 1.2f * stddev);
+
+    std::vector<int> markers;
+    markers.reserve(256);
+    const float durationSec = static_cast<float>(samples.size()) / sampleRate;
+    const int minSpacingFrames = std::max(4, totalFrames / 120);
+    int lastMarker = -minSpacingFrames;
+
+    for (std::size_t i = 1; i + 1 < flux.size(); ++i) {
+        float v = flux[i];
+        if (v > threshold && v >= flux[i - 1] && v >= flux[i + 1]) {
+            float t = (static_cast<float>(i * hop) / sampleRate) / std::max(durationSec, 1e-4f);
+            int frame = std::clamp(static_cast<int>(std::lround(t * (totalFrames - 1))), 0, totalFrames - 1);
+            if (frame - lastMarker >= minSpacingFrames) {
+                markers.push_back(frame);
+                lastMarker = frame;
+            }
+        }
+    }
+
+    if (markers.size() > 600) {
+        std::vector<int> reduced;
+        const std::size_t strideMarkers = std::max<std::size_t>(1, markers.size() / 600);
+        for (std::size_t i = 0; i < markers.size(); i += strideMarkers) {
+            reduced.push_back(markers[i]);
+        }
+        markers = std::move(reduced);
+    }
+
+    return markers;
+}
+
 std::vector<std::string> withAudioGainParam(const std::vector<std::string>& paramNames) {
     std::vector<std::string> names = paramNames;
     if (std::find(names.begin(), names.end(), "audio_gain") == names.end()) {
@@ -96,7 +318,7 @@ int runFfmpegWithProgressPipe(const std::string& ffmpegCommand,
 }
 }
 
-GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), renderRangeStart(0.0f), renderRangeEnd(1.0f), showingPreview(false), isProcessing(false), isAudioMuxing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), isLivePreviewPlaying(false), shouldStopLivePreview(false), livePreviewAudioDurationSeconds(0.0f), currentDisplayFrame(0), isDraggingChainItem(false), isDraggingPlaylistItem(false), dragSourceChainIndex(-1), dragSourcePlaylistIndex(-1), isEditingParameterField(false) {
+GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), renderRangeStart(0.0f), renderRangeEnd(1.0f), showingPreview(false), isProcessing(false), isAudioMuxing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), isLivePreviewPlaying(false), shouldStopLivePreview(false), livePreviewAudioDurationSeconds(0.0f), currentDisplayFrame(0), isDraggingChainItem(false), isDraggingPlaylistItem(false), dragSourceChainIndex(-1), dragSourcePlaylistIndex(-1), isEditingParameterField(false), automationGuideFingerprint(0) {
     automationWindow = std::make_unique<AutomationWindow>(1000);
     setupUI();
 }
@@ -115,9 +337,72 @@ void GUI::syncAutomationTimeline(float previewFps, AudioBuffer* activeAudioBuffe
         return;
     }
 
+    (void)previewFps;
+    (void)durationOverride;
+
     // Keep automation authoring on a stable normalized timeline.
     // Rendering and preview map their progress onto this range.
-    automationWindow->setTotalFrames(1000);
+    automationWindow->setTotalFrames(kAutomationTimelineFrames);
+    updateAutomationGuideMarkers(activeAudioBuffer);
+}
+
+void GUI::updateAutomationGuideMarkers(AudioBuffer* activeAudioBuffer) {
+    if (!automationWindow) {
+        return;
+    }
+
+    std::size_t fingerprint = 0;
+    fingerprint = hashCombine(fingerprint, static_cast<std::size_t>(kAutomationTimelineFrames));
+
+    const std::size_t playlistCount = audioPlaylist.getTrackCount();
+    fingerprint = hashCombine(fingerprint, playlistCount);
+    for (std::size_t i = 0; i < playlistCount; ++i) {
+        const auto& tr = audioPlaylist.getTrack(i);
+        fingerprint = hashCombine(fingerprint, tr.startIndex);
+        fingerprint = hashCombine(fingerprint, tr.endIndex);
+        fingerprint = hashCombine(fingerprint, static_cast<std::size_t>(tr.sampleRate));
+    }
+
+    if (activeAudioBuffer) {
+        fingerprint = hashCombine(fingerprint, activeAudioBuffer->size());
+        fingerprint = hashCombine(fingerprint, static_cast<std::size_t>(activeAudioBuffer->getSampleRate()));
+    }
+
+    if (fingerprint == automationGuideFingerprint) {
+        return;
+    }
+    automationGuideFingerprint = fingerprint;
+
+    std::vector<int> trackBoundaryFrames;
+    std::vector<int> rhythmSubsectionFrames;
+    const int totalFrames = kAutomationTimelineFrames;
+
+    if (playlistCount > 0) {
+        const auto* playlistBuffer = audioPlaylist.getAudioBuffer();
+        const std::size_t totalSamples = playlistBuffer ? playlistBuffer->size() : 0;
+        if (totalSamples > 0) {
+            trackBoundaryFrames.reserve(playlistCount + 1);
+            trackBoundaryFrames.push_back(0);
+            for (std::size_t i = 0; i < playlistCount; ++i) {
+                const auto& tr = audioPlaylist.getTrack(i);
+                float norm = static_cast<float>(tr.endIndex) / static_cast<float>(totalSamples);
+                int frame = std::clamp(static_cast<int>(std::lround(norm * (totalFrames - 1))), 0, totalFrames - 1);
+                trackBoundaryFrames.push_back(frame);
+            }
+        }
+    }
+
+    if (activeAudioBuffer) {
+        rhythmSubsectionFrames = extractRhythmSubsectionsFromAudio(*activeAudioBuffer, totalFrames);
+    }
+
+    std::sort(trackBoundaryFrames.begin(), trackBoundaryFrames.end());
+    trackBoundaryFrames.erase(std::unique(trackBoundaryFrames.begin(), trackBoundaryFrames.end()), trackBoundaryFrames.end());
+
+    std::sort(rhythmSubsectionFrames.begin(), rhythmSubsectionFrames.end());
+    rhythmSubsectionFrames.erase(std::unique(rhythmSubsectionFrames.begin(), rhythmSubsectionFrames.end()), rhythmSubsectionFrames.end());
+
+    automationWindow->setAudioGuideMarkers(trackBoundaryFrames, rhythmSubsectionFrames);
 }
 
 int GUI::getAutomationFrameForPosition(float previewFps, AudioBuffer* activeAudioBuffer, float durationOverride) const {
@@ -1105,6 +1390,11 @@ void GUI::syncPlaylistToVideoProcessor() {
         std::cout << "Playlist synced: " << audioPlaylist.getTrackCount() << " tracks, "
                   << "total duration: " << audioPlaylist.getTotalDuration() << "s" << std::endl;
     }
+
+    AudioBuffer* activeAudioBuffer = audioPlaylist.getAudioBuffer() ?
+                                     audioPlaylist.getAudioBuffer() :
+                                     videoProcessor.getAudioBuffer();
+    syncAutomationTimeline(30.0f, activeAudioBuffer);
 }
 
 void GUI::saveEffectChain() {
@@ -2352,6 +2642,10 @@ void GUI::openAutomationWindow() {
 
 void GUI::updateAutomationWindow() {
     if (automationWindow && automationWindow->isOpen()) {
+        AudioBuffer* activeAudioBuffer = audioPlaylist.getAudioBuffer() ?
+                                         audioPlaylist.getAudioBuffer() :
+                                         videoProcessor.getAudioBuffer();
+        syncAutomationTimeline(30.0f, activeAudioBuffer);
         automationWindow->handleEvents();
         automationWindow->update();
         automationWindow->draw();
