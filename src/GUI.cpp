@@ -207,12 +207,15 @@ std::vector<int> extractRhythmSubsectionsFromAudio(const AudioBuffer& audioBuffe
         var += d * d;
     }
     float stddev = std::sqrt(var / static_cast<float>(flux.size()));
-    float threshold = mean + std::max(0.15f * mean, 1.2f * stddev);
+    // Restrictive threshold: only strong transients pass (top ~1-2% of flux peaks).
+    // For long DJ mixes this prevents beat-level noise flooding the grid.
+    float threshold = mean + std::max(0.4f * mean, 3.0f * stddev);
 
     std::vector<int> markers;
-    markers.reserve(256);
+    markers.reserve(128);
     const float durationSec = static_cast<float>(samples.size()) / sampleRate;
-    const int minSpacingFrames = std::max(4, totalFrames / 120);
+    // Max ~40 sections: minimum gap = totalFrames/40 (25 frames per section on a 1000-frame timeline).
+    const int minSpacingFrames = std::max(10, totalFrames / 40);
     int lastMarker = -minSpacingFrames;
 
     for (std::size_t i = 1; i + 1 < flux.size(); ++i) {
@@ -227,9 +230,10 @@ std::vector<int> extractRhythmSubsectionsFromAudio(const AudioBuffer& audioBuffe
         }
     }
 
-    if (markers.size() > 600) {
+    // Hard cap: 80 markers is already very dense; prune uniformly if exceeded.
+    if (markers.size() > 80) {
         std::vector<int> reduced;
-        const std::size_t strideMarkers = std::max<std::size_t>(1, markers.size() / 600);
+        const std::size_t strideMarkers = std::max<std::size_t>(1, markers.size() / 80);
         for (std::size_t i = 0; i < markers.size(); i += strideMarkers) {
             reduced.push_back(markers[i]);
         }
