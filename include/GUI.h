@@ -25,6 +25,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <deque>
 
 class GUI {
 private:
@@ -52,6 +53,7 @@ private:
     tgui::Button::Ptr stopPreviewButton;
     tgui::CheckBox::Ptr verboseCheckbox;
     tgui::CheckBox::Ptr fxChainAutomationToggle;
+    tgui::TextArea::Ptr processingLogArea;
     
     // Automation window
     std::unique_ptr<AutomationWindow> automationWindow;
@@ -89,6 +91,9 @@ private:
     int dragSourcePlaylistIndex;
     bool isEditingParameterField;
     std::size_t automationGuideFingerprint;
+    std::mutex processingLogMutex;
+    std::deque<std::string> processingLogLines;
+    std::atomic<bool> processingLogDirty;
     
     void setupUI();
     void addEffectToChain(const std::string& effectName);
@@ -127,6 +132,9 @@ private:
     int mapRenderFrameToAutomationFrame(int frameIndex, int totalRenderFrames) const;
     void applyAutomationAtFrame(int frameNumber);
     void updateParameterDisplayValues();
+    void appendProcessingLog(const std::string& line);
+    void clearProcessingLog();
+    void flushProcessingLogToWidget();
     int getListBoxIndexAtPosition(const tgui::ListBox::Ptr& listBox, sf::Vector2f mousePos) const;
     void startListDrag(sf::Vector2f mousePos);
     void finishListDrag(sf::Vector2f mousePos);

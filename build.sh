@@ -33,9 +33,9 @@ make -j$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
 
 echo ""
 echo "=== Build Complete ==="
-echo "Executable: build/bin/VidMod"
+echo "Executable: build/vidmod"
 echo ""
 echo "To run the application:"
-echo "  cd build/bin"
-echo "  ./VidMod"
+echo "  cd build"
+echo "  ./vidmod"
 echo ""

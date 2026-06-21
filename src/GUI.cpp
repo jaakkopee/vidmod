@@ -11,6 +11,8 @@
 #include <fstream>
 #include <filesystem>
 #include <chrono>
+#include <functional>
+#include <cstdio>
 #include <sys/wait.h>  // for WEXITSTATUS
 #include <nlohmann/json.hpp>
 #include <fftw3.h>
@@ -250,7 +252,8 @@ std::vector<std::string> withAudioGainParam(const std::vector<std::string>& para
 int runFfmpegWithProgressPipe(const std::string& ffmpegCommand,
                                const std::string& progressPath,
                                std::atomic<int>& progressValue,
-                               std::atomic<int>& progressTotal) {
+                               std::atomic<int>& progressTotal,
+                               const std::function<void(const std::string&)>& onOutput = nullptr) {
     namespace fs = std::filesystem;
 
     std::error_code ec;
@@ -259,66 +262,55 @@ int runFfmpegWithProgressPipe(const std::string& ffmpegCommand,
     progressTotal = 100;
     progressValue = 10;
 
-    // Capture exit code from FFmpeg in a shared variable
-    std::atomic<int> ffmpegExitCode(-1);
-    
-    // Run FFmpeg in background.
-    std::thread ffmpegThread([ffmpegCommand, &ffmpegExitCode]() {
-        int result = system(ffmpegCommand.c_str());
-        // system() returns -1 on error, otherwise (exit_code << 8) | signal
-        // Extract actual exit code from the status
-        if (result == -1) {
-            ffmpegExitCode = -1;
-        } else {
-            ffmpegExitCode = WEXITSTATUS(result);
+    std::string commandWithOutput = ffmpegCommand + " 2>&1";
+    FILE* pipe = popen(commandWithOutput.c_str(), "r");
+    if (!pipe) {
+        if (onOutput) {
+            onOutput("Failed to start FFmpeg process.");
         }
-    });
-
-    int lastProgress = 10;
-    int pollCount = 0;
-    
-    // Wait for FFmpeg to complete, updating progress every 100ms until done.
-    // Allow up to 5 minutes (300 seconds) for long muxing operations.
-    const int maxPolls = 3000;
-    while (ffmpegThread.joinable() && pollCount < maxPolls) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        
-        pollCount++;
-        int progress = std::min(99, 10 + (pollCount / 10));  // Slow progression toward 99%
-        if (progress > lastProgress) {
-            progressValue = progress;
-            lastProgress = progress;
-        }
-        
-        // Check if thread has finished
-        if (!ffmpegThread.joinable()) {
-            break;
-        }
-    }
-
-    if (ffmpegThread.joinable()) {
-        ffmpegThread.join();
-    }
-    
-    // If FFmpeg didn't complete in time, return error
-    if (ffmpegExitCode == -1) {
-        std::cerr << "Error: FFmpeg process did not complete or encountered an error" << std::endl;
         progressValue = 0;
         return 1;
     }
-    
+
+    char buffer[512];
+    int progress = 10;
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+        std::string line(buffer);
+        if (!line.empty() && line.back() == '\n') {
+            line.pop_back();
+        }
+        if (onOutput && !line.empty()) {
+            onOutput(line);
+        }
+
+        progress = std::min(98, progress + 1);
+        progressValue = progress;
+    }
+
+    int pipeStatus = pclose(pipe);
+    if (pipeStatus == -1) {
+        if (onOutput) {
+            onOutput("FFmpeg process closed with an unknown error.");
+        }
+        progressValue = 0;
+        return 1;
+    }
+
+    int ffmpegExitCode = WIFEXITED(pipeStatus) ? WEXITSTATUS(pipeStatus) : 1;
     if (ffmpegExitCode != 0) {
-        std::cerr << "Error: FFmpeg exited with code " << ffmpegExitCode << std::endl;
+        if (onOutput) {
+            onOutput("FFmpeg exited with code " + std::to_string(ffmpegExitCode));
+        }
         progressValue = 0;
         return ffmpegExitCode;
     }
-    
+
     progressValue = 100;
     return 0;
 }
 }
 
-GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), renderRangeStart(0.0f), renderRangeEnd(1.0f), showingPreview(false), isProcessing(false), isAudioMuxing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), isLivePreviewPlaying(false), shouldStopLivePreview(false), livePreviewAudioDurationSeconds(0.0f), currentDisplayFrame(0), isDraggingChainItem(false), isDraggingPlaylistItem(false), dragSourceChainIndex(-1), dragSourcePlaylistIndex(-1), isEditingParameterField(false), automationGuideFingerprint(0) {
+GUI::GUI(sf::RenderWindow& win) : window(win), gui(window), audioPlaylist(44100), previewSprite(previewTexture), currentAudioPosition(0.0f), renderRangeStart(0.0f), renderRangeEnd(1.0f), showingPreview(false), isProcessing(false), isAudioMuxing(false), shouldStopProcessing(false), currentProcessingFrame(0), totalProcessingFrames(0), isLivePreviewPlaying(false), shouldStopLivePreview(false), livePreviewAudioDurationSeconds(0.0f), currentDisplayFrame(0), isDraggingChainItem(false), isDraggingPlaylistItem(false), dragSourceChainIndex(-1), dragSourcePlaylistIndex(-1), isEditingParameterField(false), automationGuideFingerprint(0), processingLogDirty(false) {
     automationWindow = std::make_unique<AutomationWindow>(1000);
     setupUI();
 }
@@ -330,6 +322,46 @@ GUI::~GUI() {
         shouldStopProcessing = true;
         processingThread->join();
     }
+}
+
+void GUI::appendProcessingLog(const std::string& line) {
+    if (line.empty()) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(processingLogMutex);
+    processingLogLines.push_back(line);
+
+    constexpr std::size_t kMaxLogLines = 220;
+    while (processingLogLines.size() > kMaxLogLines) {
+        processingLogLines.pop_front();
+    }
+
+    processingLogDirty = true;
+}
+
+void GUI::clearProcessingLog() {
+    std::lock_guard<std::mutex> lock(processingLogMutex);
+    processingLogLines.clear();
+    processingLogDirty = true;
+}
+
+void GUI::flushProcessingLogToWidget() {
+    if (!processingLogArea || !processingLogDirty.load()) {
+        return;
+    }
+
+    std::string joined;
+    {
+        std::lock_guard<std::mutex> lock(processingLogMutex);
+        for (const auto& line : processingLogLines) {
+            joined += line;
+            joined += "\n";
+        }
+        processingLogDirty = false;
+    }
+
+    processingLogArea->setText(joined);
 }
 
 void GUI::syncAutomationTimeline(float previewFps, AudioBuffer* activeAudioBuffer, float durationOverride) {
@@ -428,6 +460,16 @@ int GUI::mapRenderFrameToAutomationFrame(int frameIndex, int totalRenderFrames) 
 
 void GUI::setupUI() {
     std::cout << "Setting up GUI..." << std::endl;
+
+    const tgui::Color panelPink(255, 236, 243);
+    const tgui::Color panelViolet(236, 227, 255);
+    const tgui::Color panelGreen(225, 247, 232);
+    const tgui::Color panelBlue(226, 241, 255);
+    const tgui::Color widgetFill(248, 252, 255);
+    const tgui::Color widgetText(58, 52, 82);
+    const tgui::Color buttonFill(240, 231, 255);
+    const tgui::Color buttonHover(226, 255, 241);
+    const tgui::Color buttonDown(217, 233, 255);
     
     // Try to load a font - TGUI 1.x requires explicit font loading
     try {
@@ -450,7 +492,7 @@ void GUI::setupUI() {
     auto leftPanel = tgui::Panel::create();
     leftPanel->setSize("20%", "100%");
     leftPanel->setPosition("0%", "0%");
-    leftPanel->getRenderer()->setBackgroundColor(tgui::Color(220, 220, 220));
+    leftPanel->getRenderer()->setBackgroundColor(panelPink);
     mainPanel->add(leftPanel);
     
     std::cout << "Left panel created" << std::endl;
@@ -476,6 +518,10 @@ void GUI::setupUI() {
     effectList->addItem("MoldTrails");
     effectList->addItem("NeuralTile");
     effectList->addItem("NeuralCircle");
+    effectList->getRenderer()->setBackgroundColor(widgetFill);
+    effectList->getRenderer()->setTextColor(widgetText);
+    effectList->getRenderer()->setSelectedBackgroundColor(buttonFill);
+    effectList->getRenderer()->setSelectedTextColor(widgetText);
     leftPanel->add(effectList);
     
     auto addButton = tgui::Button::create("Add to Chain");
@@ -486,6 +532,10 @@ void GUI::setupUI() {
             addEffectToChain(effectList->getSelectedItem().toStdString());
         }
     });
+    addButton->getRenderer()->setBackgroundColor(buttonFill);
+    addButton->getRenderer()->setBackgroundColorHover(buttonHover);
+    addButton->getRenderer()->setBackgroundColorDown(buttonDown);
+    addButton->getRenderer()->setTextColor(widgetText);
     leftPanel->add(addButton);
     
     // Effect Chain Label
@@ -498,6 +548,10 @@ void GUI::setupUI() {
     chainList->setSize("90%", "40%");
     chainList->setPosition("5%", "46%");
     chainList->onItemSelect([this](int) { updateParameterPanel(); });
+    chainList->getRenderer()->setBackgroundColor(widgetFill);
+    chainList->getRenderer()->setTextColor(widgetText);
+    chainList->getRenderer()->setSelectedBackgroundColor(buttonFill);
+    chainList->getRenderer()->setSelectedTextColor(widgetText);
     leftPanel->add(chainList);
     
     // Chain management buttons (right next to the chain list)
@@ -514,25 +568,37 @@ void GUI::setupUI() {
             }
         }
     });
+    toggleBypassBtn->getRenderer()->setBackgroundColor(buttonFill);
+    toggleBypassBtn->getRenderer()->setBackgroundColorHover(buttonHover);
+    toggleBypassBtn->getRenderer()->setBackgroundColorDown(buttonDown);
+    toggleBypassBtn->getRenderer()->setTextColor(widgetText);
     leftPanel->add(toggleBypassBtn);
     
     auto removeEffectBtn = tgui::Button::create("Remove Effect");
     removeEffectBtn->setSize("90%", "4%");
     removeEffectBtn->setPosition("5%", "87%");
     removeEffectBtn->onPress([this]() { removeSelectedEffect(); });
+    removeEffectBtn->getRenderer()->setBackgroundColor(buttonFill);
+    removeEffectBtn->getRenderer()->setBackgroundColorHover(buttonHover);
+    removeEffectBtn->getRenderer()->setBackgroundColorDown(buttonDown);
+    removeEffectBtn->getRenderer()->setTextColor(widgetText);
     leftPanel->add(removeEffectBtn);
 
     auto automationButton = tgui::Button::create("Automation");
     automationButton->setSize("90%", "4%");
     automationButton->setPosition("5%", "92%");
     automationButton->onPress([this]() { openAutomationWindow(); });
+    automationButton->getRenderer()->setBackgroundColor(buttonFill);
+    automationButton->getRenderer()->setBackgroundColorHover(buttonHover);
+    automationButton->getRenderer()->setBackgroundColorDown(buttonDown);
+    automationButton->getRenderer()->setTextColor(widgetText);
     leftPanel->add(automationButton);
     
     // Middle panel for audio and file management
     auto middlePanel = tgui::Panel::create();
     middlePanel->setSize("20%", "100%");
     middlePanel->setPosition("20%", "0%");
-    middlePanel->getRenderer()->setBackgroundColor(tgui::Color(240, 240, 240));
+    middlePanel->getRenderer()->setBackgroundColor(panelViolet);
     mainPanel->add(middlePanel);
     
     // Audio Playlist Section
@@ -544,24 +610,40 @@ void GUI::setupUI() {
     playlistBox = tgui::ListBox::create();
     playlistBox->setSize("90%", "22%");
     playlistBox->setPosition("5%", "7%");
+    playlistBox->getRenderer()->setBackgroundColor(widgetFill);
+    playlistBox->getRenderer()->setTextColor(widgetText);
+    playlistBox->getRenderer()->setSelectedBackgroundColor(buttonFill);
+    playlistBox->getRenderer()->setSelectedTextColor(widgetText);
     middlePanel->add(playlistBox);
     
     auto addAudioBtn = tgui::Button::create("▲ Add Audio");
     addAudioBtn->setSize("44%", "4%");
     addAudioBtn->setPosition("5%", "30.5%");
     addAudioBtn->onPress([this]() { addAudioToPlaylist(); });
+    addAudioBtn->getRenderer()->setBackgroundColor(buttonFill);
+    addAudioBtn->getRenderer()->setBackgroundColorHover(buttonHover);
+    addAudioBtn->getRenderer()->setBackgroundColorDown(buttonDown);
+    addAudioBtn->getRenderer()->setTextColor(widgetText);
     middlePanel->add(addAudioBtn);
     
     auto removeAudioBtn = tgui::Button::create("▼ Remove Audio");
     removeAudioBtn->setSize("44%", "4%");
     removeAudioBtn->setPosition("51%", "30.5%");
     removeAudioBtn->onPress([this]() { removeAudioFromPlaylist(); });
+    removeAudioBtn->getRenderer()->setBackgroundColor(buttonFill);
+    removeAudioBtn->getRenderer()->setBackgroundColorHover(buttonHover);
+    removeAudioBtn->getRenderer()->setBackgroundColorDown(buttonDown);
+    removeAudioBtn->getRenderer()->setTextColor(widgetText);
     middlePanel->add(removeAudioBtn);
     
     auto clearPlaylistBtn = tgui::Button::create("Clear Playlist");
     clearPlaylistBtn->setSize("90%", "4%");
     clearPlaylistBtn->setPosition("5%", "35.5%");
     clearPlaylistBtn->onPress([this]() { clearPlaylist(); });
+    clearPlaylistBtn->getRenderer()->setBackgroundColor(buttonFill);
+    clearPlaylistBtn->getRenderer()->setBackgroundColorHover(buttonHover);
+    clearPlaylistBtn->getRenderer()->setBackgroundColorDown(buttonDown);
+    clearPlaylistBtn->getRenderer()->setTextColor(widgetText);
     middlePanel->add(clearPlaylistBtn);
 
     auto playlistJsonLabel = tgui::Label::create("Playlist JSON:");
@@ -573,12 +655,20 @@ void GUI::setupUI() {
     savePlaylistBtn->setSize("44%", "3%");
     savePlaylistBtn->setPosition("5%", "42.5%");
     savePlaylistBtn->onPress([this]() { savePlaylist(); });
+    savePlaylistBtn->getRenderer()->setBackgroundColor(buttonFill);
+    savePlaylistBtn->getRenderer()->setBackgroundColorHover(buttonHover);
+    savePlaylistBtn->getRenderer()->setBackgroundColorDown(buttonDown);
+    savePlaylistBtn->getRenderer()->setTextColor(widgetText);
     middlePanel->add(savePlaylistBtn);
 
     auto loadPlaylistBtn = tgui::Button::create("Load Playlist");
     loadPlaylistBtn->setSize("44%", "3%");
     loadPlaylistBtn->setPosition("51%", "42.5%");
     loadPlaylistBtn->onPress([this]() { loadPlaylist(); });
+    loadPlaylistBtn->getRenderer()->setBackgroundColor(buttonFill);
+    loadPlaylistBtn->getRenderer()->setBackgroundColorHover(buttonHover);
+    loadPlaylistBtn->getRenderer()->setBackgroundColorDown(buttonDown);
+    loadPlaylistBtn->getRenderer()->setTextColor(widgetText);
     middlePanel->add(loadPlaylistBtn);
     
     // Chain Save/Load buttons
@@ -591,12 +681,20 @@ void GUI::setupUI() {
     saveChainBtn->setSize("44%", "3%");
     saveChainBtn->setPosition("5%", "48.5%");
     saveChainBtn->onPress([this]() { saveEffectChain(); });
+    saveChainBtn->getRenderer()->setBackgroundColor(buttonFill);
+    saveChainBtn->getRenderer()->setBackgroundColorHover(buttonHover);
+    saveChainBtn->getRenderer()->setBackgroundColorDown(buttonDown);
+    saveChainBtn->getRenderer()->setTextColor(widgetText);
     middlePanel->add(saveChainBtn);
     
     auto loadChainBtn = tgui::Button::create("Load Chain");
     loadChainBtn->setSize("44%", "3%");
     loadChainBtn->setPosition("51%", "48.5%");
     loadChainBtn->onPress([this]() { loadEffectChain(); });
+    loadChainBtn->getRenderer()->setBackgroundColor(buttonFill);
+    loadChainBtn->getRenderer()->setBackgroundColorHover(buttonHover);
+    loadChainBtn->getRenderer()->setBackgroundColorDown(buttonDown);
+    loadChainBtn->getRenderer()->setTextColor(widgetText);
     middlePanel->add(loadChainBtn);
 
     fxChainAutomationToggle = tgui::CheckBox::create();
@@ -620,12 +718,20 @@ void GUI::setupUI() {
     loadVideoButton->setSize("90%", "4%");
     loadVideoButton->setPosition("5%", "57.5%");
     loadVideoButton->onPress([this]() { loadVideoFile(); });
+    loadVideoButton->getRenderer()->setBackgroundColor(buttonFill);
+    loadVideoButton->getRenderer()->setBackgroundColorHover(buttonHover);
+    loadVideoButton->getRenderer()->setBackgroundColorDown(buttonDown);
+    loadVideoButton->getRenderer()->setTextColor(widgetText);
     middlePanel->add(loadVideoButton);
     
     auto loadImageButton = tgui::Button::create("Load Image");
     loadImageButton->setSize("90%", "4%");
     loadImageButton->setPosition("5%", "62%");
     loadImageButton->onPress([this]() { loadImageFile(); });
+    loadImageButton->getRenderer()->setBackgroundColor(buttonFill);
+    loadImageButton->getRenderer()->setBackgroundColorHover(buttonHover);
+    loadImageButton->getRenderer()->setBackgroundColorDown(buttonDown);
+    loadImageButton->getRenderer()->setTextColor(widgetText);
     middlePanel->add(loadImageButton);
     
     // Audio position slider
@@ -645,6 +751,9 @@ void GUI::setupUI() {
     audioPositionSlider->setMinimum(0);
     audioPositionSlider->setMaximum(100);
     audioPositionSlider->setValue(0);
+    audioPositionSlider->getRenderer()->setTrackColor(tgui::Color(205, 224, 248));
+    audioPositionSlider->getRenderer()->setThumbColor(buttonFill);
+    audioPositionSlider->getRenderer()->setThumbColorHover(buttonHover);
     audioPositionSlider->onValueChange([this](float value) {
         currentAudioPosition = value / 100.0f; // 0.0 to 1.0
         
@@ -677,6 +786,10 @@ void GUI::setupUI() {
     renderRangeSlider = tgui::RangeSlider::create(0.0f, 100.0f);
     renderRangeSlider->setSize("90%", "4%");
     renderRangeSlider->setPosition("5%", "81%");
+    renderRangeSlider->getRenderer()->setTrackColor(tgui::Color(205, 224, 248));
+    renderRangeSlider->getRenderer()->setSelectedTrackColor(tgui::Color(205, 241, 222));
+    renderRangeSlider->getRenderer()->setThumbColor(buttonFill);
+    renderRangeSlider->getRenderer()->setThumbColorHover(buttonHover);
     renderRangeSlider->setSelectionStart(0.0f);
     renderRangeSlider->setSelectionEnd(100.0f);
     renderRangeSlider->onRangeChange([this](float start, float end) {
@@ -709,6 +822,10 @@ void GUI::setupUI() {
     previewButton->onPress([this]() { 
         generatePreview();
     });
+    previewButton->getRenderer()->setBackgroundColor(buttonFill);
+    previewButton->getRenderer()->setBackgroundColorHover(buttonHover);
+    previewButton->getRenderer()->setBackgroundColorDown(buttonDown);
+    previewButton->getRenderer()->setTextColor(widgetText);
     middlePanel->add(previewButton);
 
     playRangeButton = tgui::Button::create("Play Range");
@@ -717,6 +834,10 @@ void GUI::setupUI() {
     playRangeButton->onPress([this]() {
         startLivePreview();
     });
+    playRangeButton->getRenderer()->setBackgroundColor(buttonFill);
+    playRangeButton->getRenderer()->setBackgroundColorHover(buttonHover);
+    playRangeButton->getRenderer()->setBackgroundColorDown(buttonDown);
+    playRangeButton->getRenderer()->setTextColor(widgetText);
     middlePanel->add(playRangeButton);
 
     stopPreviewButton = tgui::Button::create("Stop");
@@ -725,6 +846,10 @@ void GUI::setupUI() {
     stopPreviewButton->onPress([this]() {
         stopLivePreview();
     });
+    stopPreviewButton->getRenderer()->setBackgroundColor(buttonFill);
+    stopPreviewButton->getRenderer()->setBackgroundColorHover(buttonHover);
+    stopPreviewButton->getRenderer()->setBackgroundColorDown(buttonDown);
+    stopPreviewButton->getRenderer()->setTextColor(widgetText);
     middlePanel->add(stopPreviewButton);
 
     livePreviewStateLabel = tgui::Label::create("Live: Stopped");
@@ -745,7 +870,7 @@ void GUI::setupUI() {
     auto rightPanel = tgui::Panel::create();
     rightPanel->setSize("20%", "100%");
     rightPanel->setPosition("40%", "0%");
-    rightPanel->getRenderer()->setBackgroundColor(tgui::Color(240, 240, 240));
+    rightPanel->getRenderer()->setBackgroundColor(panelGreen);
     mainPanel->add(rightPanel);
     
     auto paramLabel = tgui::Label::create("Parameters:");
@@ -756,6 +881,8 @@ void GUI::setupUI() {
     paramPanel = tgui::ScrollablePanel::create();
     paramPanel->setSize("90%", "70%");
     paramPanel->setPosition("5%", "7%");
+    paramPanel->getRenderer()->setBackgroundColor(widgetFill);
+    paramPanel->getRenderer()->setBorderColor(tgui::Color(198, 222, 201));
     paramPanel->getVerticalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Automatic);
     paramPanel->getHorizontalScrollbar()->setPolicy(tgui::Scrollbar::Policy::Never);
     rightPanel->add(paramPanel);
@@ -768,6 +895,10 @@ void GUI::setupUI() {
         std::cout << "Process video button clicked!" << std::endl;
         processVideo(); 
     });
+    processVideoButton->getRenderer()->setBackgroundColor(buttonFill);
+    processVideoButton->getRenderer()->setBackgroundColorHover(buttonHover);
+    processVideoButton->getRenderer()->setBackgroundColorDown(buttonDown);
+    processVideoButton->getRenderer()->setTextColor(widgetText);
     rightPanel->add(processVideoButton);
     processButton = processVideoButton;  // Keep pointer for compatibility
     
@@ -778,23 +909,61 @@ void GUI::setupUI() {
         std::cout << "Process image loop button clicked!" << std::endl;
         processImageLoop(); 
     });
+    processImageButton->getRenderer()->setBackgroundColor(buttonFill);
+    processImageButton->getRenderer()->setBackgroundColorHover(buttonHover);
+    processImageButton->getRenderer()->setBackgroundColorDown(buttonDown);
+    processImageButton->getRenderer()->setTextColor(widgetText);
     rightPanel->add(processImageButton);
+
+    auto logPanel = tgui::Panel::create();
+    logPanel->setSize("40%", "17%");
+    logPanel->setPosition("60%", "83%");
+    logPanel->getRenderer()->setBackgroundColor(panelBlue);
+    mainPanel->add(logPanel);
+
+    auto logLabel = tgui::Label::create("Processing Output");
+    logLabel->setPosition("2%", "2%");
+    logLabel->setTextSize(13);
+    logPanel->add(logLabel);
+
+    processingLogArea = tgui::TextArea::create();
+    processingLogArea->setSize("96%", "76%");
+    processingLogArea->setPosition("2%", "18%");
+    processingLogArea->setReadOnly(true);
+    processingLogArea->getRenderer()->setBackgroundColor(widgetFill);
+    processingLogArea->getRenderer()->setTextColor(widgetText);
+    logPanel->add(processingLogArea);
+
+    auto clearLogButton = tgui::Button::create("Clear Log");
+    clearLogButton->setSize("18%", "14%");
+    clearLogButton->setPosition("80%", "2%");
+    clearLogButton->getRenderer()->setBackgroundColor(buttonFill);
+    clearLogButton->getRenderer()->setBackgroundColorHover(buttonHover);
+    clearLogButton->getRenderer()->setBackgroundColorDown(buttonDown);
+    clearLogButton->getRenderer()->setTextColor(widgetText);
+    clearLogButton->onPress([this]() {
+        clearProcessingLog();
+        appendProcessingLog("Log cleared.");
+    });
+    logPanel->add(clearLogButton);
     
     // Status label at bottom of preview area (not covering the buttons!)
     statusLabel = tgui::Label::create("Ready");
     statusLabel->setSize("38%", "8%");
-    statusLabel->setPosition("61%", "87%");
+    statusLabel->setPosition("61%", "77.5%");
     statusLabel->setTextSize(14);
     mainPanel->add(statusLabel);
 
     // Processing progress bar for image/video rendering
     processingProgressBar = tgui::ProgressBar::create();
     processingProgressBar->setSize("38%", "2.5%");
-    processingProgressBar->setPosition("61%", "83%");
+    processingProgressBar->setPosition("61%", "74.5%");
     processingProgressBar->setMinimum(0);
     processingProgressBar->setMaximum(100);
     processingProgressBar->setValue(0);
     processingProgressBar->setVisible(false);
+    processingProgressBar->getRenderer()->setFillColor(tgui::Color(193, 234, 213));
+    processingProgressBar->getRenderer()->setBackgroundColor(tgui::Color(224, 238, 255));
     mainPanel->add(processingProgressBar);
 }
 
@@ -1699,11 +1868,13 @@ void GUI::processImageLoop() {
 bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float duration, float fps, AudioBuffer* audioToUse) {
     if (loadedImage.empty()) {
         std::cerr << "Error: No image loaded for image loop render" << std::endl;
+        appendProcessingLog("Image loop render failed: no image loaded.");
         return false;
     }
 
     if (duration <= 0.0f || fps <= 0.0f) {
         std::cerr << "Error: Invalid image loop duration or fps" << std::endl;
+        appendProcessingLog("Image loop render failed: invalid duration or fps.");
         return false;
     }
 
@@ -1720,8 +1891,11 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
 
     if (!writer.isOpened()) {
         std::cerr << "Error: Could not open video writer for: " << outputPath << std::endl;
+        appendProcessingLog("Image loop render failed: could not open output writer.");
         return false;
     }
+
+    appendProcessingLog("Rendering image loop to: " + outputPath);
 
     // Capture render range for this render pass
     const float rsStart = renderRangeStart;
@@ -1758,11 +1932,13 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
 
     if (shouldStopProcessing) {
         isAudioMuxing = false;
+        appendProcessingLog("Image loop render stopped by user.");
         return false;
     }
 
     if (!audioToUse) {
         isAudioMuxing = false;
+        appendProcessingLog("Image loop render complete (no audio mux step).");
         return true;
     }
 
@@ -1774,8 +1950,11 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
     if (!audioToUse->saveToWAV(tempAudioPath)) {
         std::cerr << "Failed to save audio to WAV file" << std::endl;
         isAudioMuxing = false;
+        appendProcessingLog("Audio muxing skipped: failed to write temporary WAV.");
         return true;
     }
+
+    appendProcessingLog("Muxing audio with FFmpeg...");
 
     std::string tempVideoPath = outputPath + ".temp_video.mp4";
     if (rename(outputPath.c_str(), tempVideoPath.c_str()) != 0) {
@@ -1786,26 +1965,34 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
     }
 
     std::string ffmpegProgressPath = outputPath + ".ffmpeg_progress.txt";
-    std::string ffmpegLogPath = outputPath + ".ffmpeg.log";
     std::string ffmpegCmd = "ffmpeg -y -hide_banner -loglevel error -i \"" + tempVideoPath +
         "\" -i \"" + tempAudioPath + "\" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k -shortest "
-        "-disposition:a:0 default \"" + outputPath + "\" > \"" + ffmpegLogPath + "\" 2>&1 < /dev/null";
+        "-disposition:a:0 default \"" + outputPath + "\"";
 
     // Restart progress bar for muxing stage and update via -progress option.
     totalProcessingFrames = 100;
     currentProcessingFrame = 0;
-    int result = runFfmpegWithProgressPipe(ffmpegCmd, ffmpegProgressPath, currentProcessingFrame, totalProcessingFrames);
+    int result = runFfmpegWithProgressPipe(ffmpegCmd,
+                                           ffmpegProgressPath,
+                                           currentProcessingFrame,
+                                           totalProcessingFrames,
+                                           [this](const std::string& line) {
+                                               appendProcessingLog("FFmpeg: " + line);
+                                           });
 
     remove(tempAudioPath.c_str());
     std::filesystem::remove(ffmpegProgressPath);
 
     if (result != 0) {
         std::cerr << "FFmpeg muxing failed with code: " << result << std::endl;
+        appendProcessingLog("FFmpeg muxing failed with code " + std::to_string(result) + ".");
         if (rename(tempVideoPath.c_str(), outputPath.c_str()) != 0) {
             std::cerr << "Failed to restore original video after mux failure. Error: " << strerror(errno) << std::endl;
+            appendProcessingLog("Failed to restore original video after FFmpeg failure.");
         }
     } else {
         remove(tempVideoPath.c_str());
+        appendProcessingLog("FFmpeg muxing complete.");
     }
 
     isAudioMuxing = false;
@@ -1827,16 +2014,22 @@ void GUI::processImageLoopThreaded(const std::string& outputPath, float duration
     totalProcessingFrames = std::max(1, static_cast<int>(std::lround(duration * fps)));
 
     statusLabel->setText("Processing image loop...");
+    clearProcessingLog();
+    appendProcessingLog("Image loop processing started.");
 
     processingThread = std::make_unique<std::thread>([this, outputPath, duration, fps, audioToUse]() {
         try {
             bool ok = renderImageLoopWithAutomation(outputPath, duration, fps, audioToUse);
             if (!ok && !shouldStopProcessing) {
                 std::cerr << "Image loop processing failed for output: " << outputPath << std::endl;
+                appendProcessingLog("Image loop processing failed.");
+            } else if (ok) {
+                appendProcessingLog("Image loop processing finished.");
             }
             isProcessing = false;
         } catch (const std::exception& e) {
             std::cerr << "Image loop processing error: " << e.what() << std::endl;
+            appendProcessingLog("Image loop processing error: " + std::string(e.what()));
             isProcessing = false;
         }
     });
@@ -2337,6 +2530,8 @@ void GUI::finishListDrag(sf::Vector2f mousePos) {
 }
 
 void GUI::draw() {
+    flushProcessingLogToWidget();
+
     // Update processing progress if active
     if (isProcessing) {
         updateProcessingProgress();
@@ -2386,12 +2581,15 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
     currentProcessingFrame = 0;
     
     statusLabel->setText("Starting processing...");
+    clearProcessingLog();
+    appendProcessingLog("Video processing started.");
     
     // Launch processing in separate thread
     processingThread = std::make_unique<std::thread>([this, outputPath, duration, audioToUse]() {
         try {
             if (videoProcessor.getVideoPath().empty()) {
                 std::lock_guard<std::mutex> lock(previewMutex);
+                appendProcessingLog("Video processing aborted: no video loaded.");
                 isProcessing = false;
                 return;
             }
@@ -2403,11 +2601,13 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
             
             // Create VideoBuffer with disk-based buffering (100 frames at a time)
             std::cout << "Creating VideoBuffer with disk-based buffering..." << std::endl;
+            appendProcessingLog("Preparing video buffer...");
             VideoBuffer videoBuffer(videoProcessor.getVideoPath(), 100);
             
             if (videoBuffer.getTotalFrames() == 0) {
                 std::cerr << "ERROR: Could not open video file!" << std::endl;
                 std::lock_guard<std::mutex> lock(previewMutex);
+                appendProcessingLog("Video processing failed: could not open input video.");
                 isProcessing = false;
                 return;
             }
@@ -2445,6 +2645,7 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
             
             std::cout << "Creating VideoWriter for " << targetFrames << " frames at " << fps << " fps" << std::endl;
             std::cout << "Output path: " << outputPath << std::endl;
+            appendProcessingLog("Rendering video to: " + outputPath);
             
             // Create video writer
             int fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v');
@@ -2453,6 +2654,7 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
             if (!writer.isOpened()) {
                 std::cerr << "ERROR: Could not open video writer!" << std::endl;
                 std::lock_guard<std::mutex> lock(previewMutex);
+                appendProcessingLog("Video processing failed: could not open output writer.");
                 isProcessing = false;
                 return;
             }
@@ -2488,6 +2690,10 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                 // Apply effects
                 cv::Mat processedFrame = effectChain.applyEffects(currentFrame, audioToUse, fps);
                 writer.write(processedFrame);
+
+                if (frameCount % 150 == 0) {
+                    appendProcessingLog("Rendered " + std::to_string(frameCount) + " / " + std::to_string(targetFrames) + " frames");
+                }
                 
                 // Update preview every 5 frames to avoid overwhelming the GUI
                 if (frameCount % 5 == 0) {
@@ -2511,63 +2717,82 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                 std::cout << "Audio buffer size: " << audioToUse->size() << " samples" << std::endl;
                 std::string tempAudioPath = outputPath + ".temp_audio.wav";
                 std::cout << "Saving audio to: " << tempAudioPath << std::endl;
+                appendProcessingLog("Preparing temporary audio for muxing...");
                 
                 if (audioToUse->saveToWAV(tempAudioPath)) {
                     std::cout << "Audio saved successfully to: " << tempAudioPath << std::endl;
+                    appendProcessingLog("Temporary WAV created: " + tempAudioPath);
                     std::string tempVideoPath = outputPath + ".temp_video.mp4";
                     std::cout << "Attempting to rename " << outputPath << " to " << tempVideoPath << std::endl;
                     
                     if (rename(outputPath.c_str(), tempVideoPath.c_str()) == 0) {
                         std::cout << "Video renamed successfully to: " << tempVideoPath << std::endl;
+                        appendProcessingLog("Muxing audio with FFmpeg...");
                         // Map streams explicitly and set audio as default.
                         std::string ffmpegProgressPath = outputPath + ".ffmpeg_progress.txt";
-                        std::string ffmpegLogPath = outputPath + ".ffmpeg.log";
                         std::string ffmpegCmd = "ffmpeg -y -hide_banner -loglevel error -i \"" + tempVideoPath +
                             "\" -i \"" + tempAudioPath + "\" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k -shortest " +
-                            "-disposition:a:0 default \"" + outputPath + "\" > \"" + ffmpegLogPath + "\" 2>&1 < /dev/null";
-                        std::cout << "Running FFmpeg with output log: " << ffmpegLogPath << std::endl;
+                            "-disposition:a:0 default \"" + outputPath + "\"";
+                        std::cout << "Running FFmpeg muxing command" << std::endl;
 
                         // Restart progress bar for muxing stage and update via -progress option.
                         totalProcessingFrames = 100;
                         currentProcessingFrame = 0;
-                        int result = runFfmpegWithProgressPipe(ffmpegCmd, ffmpegProgressPath, currentProcessingFrame, totalProcessingFrames);
+                        int result = runFfmpegWithProgressPipe(ffmpegCmd,
+                                                               ffmpegProgressPath,
+                                                               currentProcessingFrame,
+                                                               totalProcessingFrames,
+                                                               [this](const std::string& line) {
+                                                                   appendProcessingLog("FFmpeg: " + line);
+                                                               });
                         std::cout << "FFmpeg returned code: " << result << std::endl;
 
                         if (result != 0) {
                             std::cerr << "FFmpeg muxing failed with code: " << result << std::endl;
+                            appendProcessingLog("FFmpeg muxing failed with code " + std::to_string(result) + ".");
                             if (rename(tempVideoPath.c_str(), outputPath.c_str()) != 0) {
                                 std::cerr << "Failed to restore original video after mux failure. Error: " << strerror(errno) << std::endl;
+                                appendProcessingLog("Failed to restore original video after FFmpeg failure.");
                             }
                         } else {
                             std::cout << "FFmpeg muxing completed successfully" << std::endl;
                             std::cout << "Removing temp video: " << tempVideoPath << std::endl;
                             remove(tempVideoPath.c_str());
+                            appendProcessingLog("FFmpeg muxing complete.");
                         }
                         std::filesystem::remove(ffmpegProgressPath);
                     } else {
                         std::cerr << "Failed to rename video file. Error: " << strerror(errno) << std::endl;
+                        appendProcessingLog("Muxing skipped: failed to prepare temporary video.");
                     }
                     std::cout << "Removing temp audio: " << tempAudioPath << std::endl;
                     remove(tempAudioPath.c_str());
                 } else {
                     std::cerr << "Failed to save audio to WAV file" << std::endl;
+                    appendProcessingLog("Muxing skipped: failed to write temporary WAV.");
                 }
                 isAudioMuxing = false;
             } else {
                 if (!audioToUse) {
                     std::cout << "No audio buffer available for muxing" << std::endl;
+                    appendProcessingLog("Render complete (no audio selected for muxing).");
                 }
                 if (shouldStopProcessing) {
                     std::cout << "Processing was stopped, skipping muxing" << std::endl;
+                    appendProcessingLog("Render stopped before muxing.");
                 }
             }
             
             std::cout << "Processing thread finishing..." << std::endl;
+            if (!shouldStopProcessing) {
+                appendProcessingLog("Video processing finished.");
+            }
             isAudioMuxing = false;
             isProcessing = false;
             
         } catch (const std::exception& e) {
             std::cerr << "Processing error: " << e.what() << std::endl;
+            appendProcessingLog("Processing error: " + std::string(e.what()));
             isAudioMuxing = false;
             isProcessing = false;
         }
@@ -2615,8 +2840,10 @@ void GUI::updateProcessingProgress() {
         
         if (shouldStopProcessing) {
             statusLabel->setText("Processing stopped");
+            appendProcessingLog("Processing stopped.");
         } else {
             statusLabel->setText("Processing complete!");
+            appendProcessingLog("Processing complete.");
         }
         isAudioMuxing = false;
     }
