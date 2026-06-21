@@ -2426,13 +2426,23 @@ void GUI::updatePreview(const cv::Mat& frame) {
     previewTexture.update(rgbaFrame.data);
     previewSprite.setTexture(previewTexture, true); // true = reset texture rect
     
-    // Scale to fit preview area
-    float scaleX = (window.getSize().x * 0.38f) / rgbaFrame.cols;
-    float scaleY = (window.getSize().y * 0.75f) / rgbaFrame.rows;
+    // Fit inside a dedicated right-side preview area and center within it.
+    const float previewAreaLeft = window.getSize().x * 0.62f;
+    const float previewAreaTop = window.getSize().y * 0.05f;
+    const float previewAreaWidth = window.getSize().x * 0.36f;
+    const float previewAreaHeight = window.getSize().y * 0.67f;
+
+    float scaleX = previewAreaWidth / static_cast<float>(rgbaFrame.cols);
+    float scaleY = previewAreaHeight / static_cast<float>(rgbaFrame.rows);
     float scale = std::min(scaleX, scaleY);
-    
+
     previewSprite.setScale({scale, scale});
-    previewSprite.setPosition({window.getSize().x * 0.61f, window.getSize().y * 0.06f});
+
+    const float drawnWidth = rgbaFrame.cols * scale;
+    const float drawnHeight = rgbaFrame.rows * scale;
+    const float centeredX = previewAreaLeft + (previewAreaWidth - drawnWidth) * 0.5f;
+    const float centeredY = previewAreaTop + (previewAreaHeight - drawnHeight) * 0.5f;
+    previewSprite.setPosition({centeredX, centeredY});
     
     showingPreview = true;
     currentPreviewFrame = frame.clone();
@@ -2550,13 +2560,13 @@ void GUI::draw() {
         livePreviewStateLabel->setText(isLivePreviewPlaying ? "Live: Playing" : "Live: Stopped");
     }
     
-    gui.draw();
-    
     if (showingPreview) {
-        // Ensure proper blend mode for drawing the sprite
+        // Draw preview first so GUI overlays (status/log/text) stay readable.
         sf::RenderStates states = sf::RenderStates::Default;
         window.draw(previewSprite, states);
     }
+
+    gui.draw();
     
     // Update parameter display values during playback/rendering to reflect automation
     // This works for live preview, image loop rendering, and video rendering with automation
