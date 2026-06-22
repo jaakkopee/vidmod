@@ -2469,10 +2469,17 @@ void GUI::updatePreview(const cv::Mat& frame) {
     previewSprite.setTexture(previewTexture, true); // true = reset texture rect
     
     // Fit inside a dedicated right-side preview area and center within it.
-    const float previewAreaLeft = window.getSize().x * 0.62f;
-    const float previewAreaTop = window.getSize().y * 0.05f;
-    const float previewAreaWidth = window.getSize().x * 0.36f;
-    const float previewAreaHeight = window.getSize().y * 0.67f;
+    // Use view coordinates (not raw pixel size) so placement stays correct on HiDPI displays.
+    const sf::View& view = window.getView();
+    const sf::Vector2f viewSize = view.getSize();
+    const sf::Vector2f viewCenter = view.getCenter();
+    const float viewLeft = viewCenter.x - viewSize.x * 0.5f;
+    const float viewTop = viewCenter.y - viewSize.y * 0.5f;
+
+    const float previewAreaLeft = viewLeft + viewSize.x * 0.60f;
+    const float previewAreaTop = viewTop + viewSize.y * 0.05f;
+    const float previewAreaWidth = viewSize.x * 0.40f;
+    const float previewAreaHeight = viewSize.y * 0.67f;
 
     float scaleX = previewAreaWidth / static_cast<float>(rgbaFrame.cols);
     float scaleY = previewAreaHeight / static_cast<float>(rgbaFrame.rows);
