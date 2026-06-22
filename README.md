@@ -9,6 +9,7 @@ A C++ application for building chained video effects driven by image processing,
 - **Audio-Reactive**: Effects can respond to RMS or FFT-derived band energy
 - **Real-time Preview**: Preview individual frames with effects applied
 - **Automation**: Per-parameter timeline automation across effect chains
+- **Automation Overrides**: Per-parameter "From automation" toggle for manual override during playback
 - **Audio Muxing**: FFmpeg-based muxing with timeline-aware progress updates
 - **Preview Layout**: Right-side preview centering works reliably for rectangular media on HiDPI displays
 - **Test Media Generator**: Python utility for creating synthetic image/video inputs
@@ -370,6 +371,9 @@ cmake --build .
    - Select an effect in the chain
    - Adjust parameters in the "Parameters" panel
    - Press Enter after editing each parameter
+   - Parameters remain editable while live preview is running
+   - For automated parameters, use "From automation" to enable/disable timeline control per parameter
+   - Manual edits on automated parameters automatically disable "From automation" for that parameter
 
 5. **Preview**:
    - Click "Preview Frame" to see effects applied to a single frame

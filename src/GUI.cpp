@@ -22,6 +22,50 @@ using json = nlohmann::json;
 namespace {
 constexpr int kAutomationTimelineFrames = 1000;
 
+struct AutomationStats {
+    int effects = 0;
+    int parameters = 0;
+    int keyframes = 0;
+};
+
+AutomationStats summarizeAutomationJson(const json& automationRoot) {
+    AutomationStats stats;
+
+    if (!automationRoot.is_object() ||
+        !automationRoot.contains("effectAutomations") ||
+        !automationRoot["effectAutomations"].is_array()) {
+        return stats;
+    }
+
+    for (const auto& effectJson : automationRoot["effectAutomations"]) {
+        if (!effectJson.is_object() ||
+            !effectJson.contains("parameters") ||
+            !effectJson["parameters"].is_object()) {
+            continue;
+        }
+
+        int paramsInEffect = 0;
+        for (auto it = effectJson["parameters"].begin(); it != effectJson["parameters"].end(); ++it) {
+            if (!it.value().is_object()) {
+                continue;
+            }
+
+            paramsInEffect += 1;
+            stats.parameters += 1;
+
+            if (it.value().contains("keyframes") && it.value()["keyframes"].is_array()) {
+                stats.keyframes += static_cast<int>(it.value()["keyframes"].size());
+            }
+        }
+
+        if (paramsInEffect > 0) {
+            stats.effects += 1;
+        }
+    }
+
+    return stats;
+}
+
 std::size_t hashCombine(std::size_t seed, std::size_t value) {
     return seed ^ (value + 0x9e3779b97f4a7c15ULL + (seed << 6U) + (seed >> 2U));
 }
@@ -1045,6 +1089,7 @@ void GUI::removeSelectedEffect() {
     int selected = chainList->getSelectedItemIndex();
     if (selected >= 0) {
         effectChain.removeEffect(selected);
+        removeAutomationToggleState(selected);
         if (automationWindow) {
             automationWindow->removeEffectAutomation(selected);
         }
@@ -1055,6 +1100,8 @@ void GUI::removeSelectedEffect() {
 }
 
 void GUI::updateChainList() {
+    int previousSelection = chainList ? chainList->getSelectedItemIndex() : -1;
+
     chainList->removeAllItems();
     const auto& effects = effectChain.getEffects();
     for (size_t i = 0; i < effects.size(); ++i) {
@@ -1065,10 +1112,22 @@ void GUI::updateChainList() {
         }
         chainList->addItem(label);
     }
+
+    if (effects.empty()) {
+        return;
+    }
+
+    int targetSelection = 0;
+    if (previousSelection >= 0 && previousSelection < static_cast<int>(effects.size())) {
+        targetSelection = previousSelection;
+    }
+    chainList->setSelectedItemByIndex(targetSelection);
 }
 
 void GUI::updateParameterPanel() {
     paramPanel->removeAllWidgets();
+    parameterEditBoxes.clear();
+    parameterAutomationToggles.clear();
     isEditingParameterField = false;
     
     int selected = chainList->getSelectedItemIndex();
@@ -1085,9 +1144,11 @@ void GUI::updateParameterPanel() {
         label->setPosition(10, yPos);
         label->setTextSize(12);
         paramPanel->add(label);
+
+        const bool automated = hasAutomationForParameter(selected, paramName);
         
         auto editBox = tgui::EditBox::create();
-        editBox->setSize(150, 25);
+        editBox->setSize(automated ? 110 : 150, 25);
         editBox->setPosition(10, yPos + 20);
         
         // Get current value (may be automated)
@@ -1097,33 +1158,71 @@ void GUI::updateParameterPanel() {
         editBox->onFocus([this]() {
             isEditingParameterField = true;
         });
-        
-        // Save parameter on Return key
-        editBox->onReturnKeyPress([this, effect, paramName, editBox]() {
+
+        auto commitManualEdit = [this, selected, effect, paramName, editBox](bool updateStatusText) {
             try {
                 float value = std::stof(editBox->getText().toStdString());
                 effect->setParameter(paramName, value);
-                isEditingParameterField = false;
-                statusLabel->setText("Updated " + paramName);
+
+                // Manual edits become a local override when automation exists.
+                if (hasAutomationForParameter(selected, paramName) && isAutomationEnabledForParameter(selected, paramName)) {
+                    setAutomationEnabledForParameter(selected, paramName, false);
+                    auto toggleIt = parameterAutomationToggles.find(paramName);
+                    if (toggleIt != parameterAutomationToggles.end() && toggleIt->second) {
+                        toggleIt->second->setChecked(false);
+                    }
+                    if (updateStatusText) {
+                        statusLabel->setText("Updated " + paramName + " (manual override)");
+                    }
+                } else if (updateStatusText) {
+                    statusLabel->setText("Updated " + paramName);
+                }
+
                 std::cout << "Parameter " << paramName << " updated to " << value << std::endl;
             } catch (...) {
-                statusLabel->setText("Invalid value for " + paramName);
+                if (updateStatusText) {
+                    statusLabel->setText("Invalid value for " + paramName);
+                }
             }
+        };
+        
+        // Save parameter on Return key
+        editBox->onReturnKeyPress([this, commitManualEdit]() {
+            isEditingParameterField = false;
+            commitManualEdit(true);
         });
         
         // Also save parameter when the edit box loses focus
-        editBox->onUnfocus([this, effect, paramName, editBox]() {
+        editBox->onUnfocus([this, commitManualEdit]() {
             isEditingParameterField = false;
-            try {
-                float value = std::stof(editBox->getText().toStdString());
-                effect->setParameter(paramName, value);
-                std::cout << "Parameter " << paramName << " updated to " << value << " (unfocus)" << std::endl;
-            } catch (...) {
-                // Invalid value, ignore
-            }
+            commitManualEdit(false);
         });
         
         paramPanel->add(editBox);
+        parameterEditBoxes[paramName] = editBox;
+
+        if (automated) {
+            auto fromAutomationToggle = tgui::CheckBox::create();
+            fromAutomationToggle->setSize(16, 16);
+            fromAutomationToggle->setPosition(130, yPos + 24);
+            fromAutomationToggle->setChecked(isAutomationEnabledForParameter(selected, paramName));
+            fromAutomationToggle->onChange([this, selected, paramName](bool checked) {
+                setAutomationEnabledForParameter(selected, paramName, checked);
+                if (checked) {
+                    statusLabel->setText("Automation enabled for " + paramName);
+                } else {
+                    statusLabel->setText("Manual override for " + paramName);
+                }
+            });
+            paramPanel->add(fromAutomationToggle);
+
+            auto automationLabel = tgui::Label::create("From automation");
+            automationLabel->setPosition(150, yPos + 22);
+            automationLabel->setTextSize(11);
+            paramPanel->add(automationLabel);
+
+            parameterAutomationToggles[paramName] = fromAutomationToggle;
+        }
         
         yPos += 55.0f;
     }
@@ -1645,6 +1744,7 @@ void GUI::saveEffectChain() {
         std::string path = pathEdit->getText().toStdString();
         bool saveAutomation = fxChainAutomationToggle && fxChainAutomationToggle->isChecked();
         bool ok = false;
+        AutomationStats savedAutomationStats;
         if (saveAutomation && automationWindow) {
             try {
                 json root;
@@ -1652,6 +1752,7 @@ void GUI::saveEffectChain() {
                 root["effectChain"] = json::parse(effectChain.toJsonString());
                 std::string automationText = automationWindow->exportAutomationJson();
                 root["automation"] = automationText.empty() ? json::object() : json::parse(automationText);
+                savedAutomationStats = summarizeAutomationJson(root["automation"]);
 
                 std::ofstream out(path);
                 if (out.is_open()) {
@@ -1667,7 +1768,14 @@ void GUI::saveEffectChain() {
         }
 
         if (ok) {
-            statusLabel->setText(saveAutomation ? "Chain + automation saved: " + path : "Chain saved: " + path);
+            if (saveAutomation) {
+                statusLabel->setText(
+                    "Chain + automation saved (effects=" + std::to_string(savedAutomationStats.effects) +
+                    ", params=" + std::to_string(savedAutomationStats.parameters) +
+                    ", keys=" + std::to_string(savedAutomationStats.keyframes) + "): " + path);
+            } else {
+                statusLabel->setText("Chain saved: " + path);
+            }
         } else {
             statusLabel->setText(saveAutomation ? "Failed to save chain + automation" : "Failed to save chain");
         }
@@ -1734,30 +1842,62 @@ void GUI::loadEffectChain() {
         bool loadAutomation = fxChainAutomationToggle && fxChainAutomationToggle->isChecked();
         bool ok = false;
         bool loadedAutomation = false;
+        bool automationPresentInFile = false;
+        AutomationStats loadedAutomationStats;
 
-        if (loadAutomation) {
-            try {
-                std::ifstream in(path);
-                if (in.is_open()) {
-                    json root;
-                    in >> root;
+        // Loading a new chain starts with fresh manual override state.
+        parameterAutomationEnabled.clear();
 
-                    if (root.contains("effectChain")) {
-                        ok = effectChain.fromJsonString(root["effectChain"].dump());
-                        if (ok && root.contains("automation") && automationWindow) {
-                            loadedAutomation = automationWindow->importAutomationJson(root["automation"].dump());
+        // Always parse chain files the same way; if bundled automation exists,
+        // import it regardless of the UI toggle so bundle loads are faithful.
+        try {
+            std::ifstream in(path);
+            if (in.is_open()) {
+                json root;
+                in >> root;
+
+                const json* chainJson = &root;
+                if (root.contains("effectChain") && root["effectChain"].is_object()) {
+                    chainJson = &root["effectChain"];
+                }
+
+                ok = effectChain.fromJsonString(chainJson->dump());
+                automationPresentInFile = root.contains("automation");
+
+                if (ok && automationPresentInFile && automationWindow) {
+                    json automationJson = root["automation"];
+
+                    // Compatibility: some files may store automation as a string
+                    // or wrapped in an extra { "automation": ... } object.
+                    if (automationJson.is_object() &&
+                        automationJson.contains("automation") &&
+                        !automationJson.contains("effectAutomations")) {
+                        automationJson = automationJson["automation"];
+                    }
+
+                    if (automationJson.is_string()) {
+                        try {
+                            loadedAutomationStats = summarizeAutomationJson(
+                                json::parse(automationJson.get<std::string>()));
+                        } catch (const std::exception&) {
+                            loadedAutomationStats = AutomationStats{};
                         }
                     } else {
-                        // Backward-compatible fallback for plain chain JSON files.
-                        ok = effectChain.fromJsonString(root.dump());
+                        loadedAutomationStats = summarizeAutomationJson(automationJson);
+                    }
+
+                    if (automationJson.is_string()) {
+                        loadedAutomation = automationWindow->importAutomationJson(
+                            automationJson.get<std::string>());
+                    } else {
+                        loadedAutomation = automationWindow->importAutomationJson(
+                            automationJson.dump());
                     }
                 }
-            } catch (const std::exception& e) {
-                std::cerr << "Failed to load chain bundle: " << e.what() << std::endl;
-                ok = false;
             }
-        } else {
-            ok = effectChain.loadFromJson(path);
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to load chain file: " << e.what() << std::endl;
+            ok = false;
         }
 
         if (ok) {
@@ -1768,8 +1908,17 @@ void GUI::loadEffectChain() {
             }
             updateChainList();
             updateParameterPanel();
-            if (loadAutomation) {
-                statusLabel->setText(loadedAutomation ? "Chain + automation loaded: " + path : "Chain loaded (no automation in file): " + path);
+            if (loadAutomation || automationPresentInFile) {
+                if (loadedAutomation) {
+                    statusLabel->setText(
+                        "Chain + automation loaded (effects=" + std::to_string(loadedAutomationStats.effects) +
+                        ", params=" + std::to_string(loadedAutomationStats.parameters) +
+                        ", keys=" + std::to_string(loadedAutomationStats.keyframes) + "): " + path);
+                } else if (automationPresentInFile) {
+                    statusLabel->setText("Chain loaded (automation parse failed): " + path);
+                } else {
+                    statusLabel->setText("Chain loaded (no automation in file): " + path);
+                }
             } else {
                 statusLabel->setText("Chain loaded: " + path);
             }
@@ -2571,6 +2720,7 @@ void GUI::finishListDrag(sf::Vector2f mousePos) {
         const int targetIndex = getListBoxIndexAtPosition(chainList, mousePos);
         if (dragSourceChainIndex >= 0 && targetIndex >= 0 && dragSourceChainIndex != targetIndex) {
             effectChain.moveEffect(static_cast<size_t>(dragSourceChainIndex), static_cast<size_t>(targetIndex));
+            moveAutomationToggleState(dragSourceChainIndex, targetIndex);
             if (automationWindow) {
                 automationWindow->moveEffectAutomation(dragSourceChainIndex, targetIndex);
             }
@@ -2634,6 +2784,9 @@ void GUI::draw() {
     if (isLivePreviewPlaying || isProcessing) {
         updateParameterDisplayValues();
     }
+
+    // Keep automation toggle widgets in sync with live (unsaved) automation edits.
+    refreshParameterPanelAutomationToggles();
     
     // Update automation window if open
     updateAutomationWindow();
@@ -2970,6 +3123,10 @@ void GUI::updateAutomationWindow() {
         automationWindow->handleEvents();
         automationWindow->update();
         automationWindow->draw();
+
+        // Automation may have changed this frame (added/removed keyframes).
+        // Ensure parameter-row toggles appear/disappear without reselecting the effect.
+        refreshParameterPanelAutomationToggles();
     }
 }
 
@@ -2993,6 +3150,9 @@ void GUI::applyAutomationAtFrame(int frameNumber) {
                 const ParameterAutomation& automation = paramAuto.second;
                 
                 if (automation.hasKeyframes()) {
+                    if (!isAutomationEnabledForParameter(effectIndex, paramName)) {
+                        continue;
+                    }
                     // Use getActualValueAtFrame to scale to parameter's range
                     float automatedValue = automation.getActualValueAtFrame(frameNumber);
                     effect->setParameter(paramName, automatedValue);
@@ -3015,20 +3175,130 @@ void GUI::updateParameterDisplayValues() {
     auto effect = effectChain.getEffect(selected);
     if (!effect) return;
     
-    // Update edit boxes with current (possibly automated) values
-    const auto paramNames = withAudioGainParam(effect->getParameterNames());
-    auto widgets = paramPanel->getWidgets();
-    
-    int editBoxIndex = 0;
-    for (const auto& paramName : paramNames) {
-        // Find the corresponding edit box (every other widget after labels)
-        if (editBoxIndex * 2 + 1 < widgets.size()) {
-            auto editBox = std::dynamic_pointer_cast<tgui::EditBox>(widgets[editBoxIndex * 2 + 1]);
-            if (editBox) {
-                float currentValue = effect->getParameter(paramName);
-                editBox->setText(tgui::String(currentValue));
+    for (const auto& [paramName, editBox] : parameterEditBoxes) {
+        if (editBox) {
+            float currentValue = effect->getParameter(paramName);
+            editBox->setText(tgui::String(currentValue));
+        }
+    }
+}
+
+bool GUI::hasAutomationForParameter(int effectIndex, const std::string& paramName) const {
+    if (!automationWindow || effectIndex < 0) {
+        return false;
+    }
+
+    const auto& automations = automationWindow->getAutomations();
+    auto effectIt = automations.find(effectIndex);
+    if (effectIt == automations.end()) {
+        return false;
+    }
+
+    auto paramIt = effectIt->second.find(paramName);
+    if (paramIt == effectIt->second.end()) {
+        return false;
+    }
+
+    // Show toggle when the parameter has an automation entry, even if keyframes
+    // are currently empty. This keeps the override control consistently visible.
+    return true;
+}
+
+bool GUI::isAutomationEnabledForParameter(int effectIndex, const std::string& paramName) const {
+    auto effectIt = parameterAutomationEnabled.find(effectIndex);
+    if (effectIt == parameterAutomationEnabled.end()) {
+        return true;
+    }
+
+    auto paramIt = effectIt->second.find(paramName);
+    if (paramIt == effectIt->second.end()) {
+        return true;
+    }
+
+    return paramIt->second;
+}
+
+void GUI::setAutomationEnabledForParameter(int effectIndex, const std::string& paramName, bool enabled) {
+    if (effectIndex < 0) {
+        return;
+    }
+    parameterAutomationEnabled[effectIndex][paramName] = enabled;
+}
+
+void GUI::removeAutomationToggleState(int removedEffectIndex) {
+    if (removedEffectIndex < 0) {
+        return;
+    }
+
+    std::map<int, std::map<std::string, bool>> remapped;
+    for (const auto& [idx, paramMap] : parameterAutomationEnabled) {
+        if (idx == removedEffectIndex) {
+            continue;
+        }
+        int mappedIndex = (idx > removedEffectIndex) ? (idx - 1) : idx;
+        remapped[mappedIndex] = paramMap;
+    }
+    parameterAutomationEnabled = std::move(remapped);
+}
+
+void GUI::moveAutomationToggleState(int fromIndex, int toIndex) {
+    if (fromIndex == toIndex || fromIndex < 0 || toIndex < 0) {
+        return;
+    }
+
+    const auto remapIndex = [fromIndex, toIndex](int idx) {
+        if (idx == fromIndex) {
+            return toIndex;
+        }
+
+        if (fromIndex < toIndex) {
+            if (idx > fromIndex && idx <= toIndex) {
+                return idx - 1;
+            }
+        } else {
+            if (idx >= toIndex && idx < fromIndex) {
+                return idx + 1;
             }
         }
-        editBoxIndex++;
+
+        return idx;
+    };
+
+    std::map<int, std::map<std::string, bool>> remapped;
+    for (const auto& [idx, paramMap] : parameterAutomationEnabled) {
+        remapped[remapIndex(idx)] = paramMap;
+    }
+    parameterAutomationEnabled = std::move(remapped);
+}
+
+void GUI::refreshParameterPanelAutomationToggles() {
+    if (isEditingParameterField || !chainList) {
+        return;
+    }
+
+    const int selected = chainList->getSelectedItemIndex();
+    if (selected < 0) {
+        return;
+    }
+
+    auto effect = effectChain.getEffect(selected);
+    if (!effect) {
+        return;
+    }
+
+    const auto paramNames = withAudioGainParam(effect->getParameterNames());
+    bool needsRebuild = false;
+
+    for (const auto& paramName : paramNames) {
+        const bool shouldShowToggle = hasAutomationForParameter(selected, paramName);
+        const bool currentlyShown = parameterAutomationToggles.find(paramName) != parameterAutomationToggles.end();
+        if (shouldShowToggle != currentlyShown) {
+            needsRebuild = true;
+            break;
+        }
+    }
+
+    if (needsRebuild) {
+        updateParameterPanel();
     }
 }

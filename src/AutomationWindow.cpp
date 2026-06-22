@@ -261,6 +261,12 @@ std::string AutomationWindow::exportAutomationJson() const {
         for (const auto& effectEntry : effectAutomations) {
             json effectJson;
             effectJson["effectIndex"] = effectEntry.first;
+            if (effectChainRef) {
+                const auto& effects = effectChainRef->getEffects();
+                if (effectEntry.first >= 0 && effectEntry.first < static_cast<int>(effects.size())) {
+                    effectJson["effectName"] = effects[effectEntry.first]->getName();
+                }
+            }
             effectJson["parameters"] = json::object();
 
             for (const auto& paramEntry : effectEntry.second) {

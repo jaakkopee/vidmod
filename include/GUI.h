@@ -26,6 +26,7 @@
 #include <chrono>
 #include <cstddef>
 #include <deque>
+#include <map>
 
 class GUI {
 private:
@@ -90,6 +91,9 @@ private:
     int dragSourceChainIndex;
     int dragSourcePlaylistIndex;
     bool isEditingParameterField;
+    std::map<std::string, tgui::EditBox::Ptr> parameterEditBoxes;
+    std::map<std::string, tgui::CheckBox::Ptr> parameterAutomationToggles;
+    std::map<int, std::map<std::string, bool>> parameterAutomationEnabled;
     std::size_t automationGuideFingerprint;
     std::mutex processingLogMutex;
     std::deque<std::string> processingLogLines;
@@ -134,6 +138,12 @@ private:
                                         float normalizedStart = 0.0f,
                                         float normalizedEnd = 1.0f) const;
     void applyAutomationAtFrame(int frameNumber);
+    bool hasAutomationForParameter(int effectIndex, const std::string& paramName) const;
+    bool isAutomationEnabledForParameter(int effectIndex, const std::string& paramName) const;
+    void setAutomationEnabledForParameter(int effectIndex, const std::string& paramName, bool enabled);
+    void removeAutomationToggleState(int removedEffectIndex);
+    void moveAutomationToggleState(int fromIndex, int toIndex);
+    void refreshParameterPanelAutomationToggles();
     void updateParameterDisplayValues();
     void appendProcessingLog(const std::string& line);
     void clearProcessingLog();

@@ -74,6 +74,9 @@ Generated files:
    - Click on "1. FFT" in the chain list
    - Modify parameters in the right panel
    - Press Enter after each change
+   - Parameters are editable even while "Play Range" preview is running
+   - If a parameter is automated, use "From automation" to keep or disable timeline control
+   - Manual editing of an automated parameter automatically turns off "From automation" for that row
 
 4. **Preview**:
    - Click "Preview Frame" to see the effect on one frame
