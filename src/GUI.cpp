@@ -253,6 +253,7 @@ int runFfmpegWithProgressPipe(const std::string& ffmpegCommand,
                                const std::string& progressPath,
                                std::atomic<int>& progressValue,
                                std::atomic<int>& progressTotal,
+                               double expectedDurationSeconds,
                                const std::function<void(const std::string&)>& onOutput = nullptr) {
     namespace fs = std::filesystem;
 
@@ -260,7 +261,7 @@ int runFfmpegWithProgressPipe(const std::string& ffmpegCommand,
     fs::remove(progressPath, ec);
 
     progressTotal = 100;
-    progressValue = 10;
+    progressValue = 0;
 
     std::string commandWithOutput = ffmpegCommand + " 2>&1";
     FILE* pipe = popen(commandWithOutput.c_str(), "r");
@@ -273,7 +274,7 @@ int runFfmpegWithProgressPipe(const std::string& ffmpegCommand,
     }
 
     char buffer[512];
-    int progress = 10;
+    int progress = 0;
     while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
         std::string line(buffer);
         if (!line.empty() && line.back() == '\n') {
@@ -283,7 +284,21 @@ int runFfmpegWithProgressPipe(const std::string& ffmpegCommand,
             onOutput(line);
         }
 
-        progress = std::min(98, progress + 1);
+        if (line.rfind("out_time=", 0) == 0 && expectedDurationSeconds > 0.0) {
+            const std::string timeCode = line.substr(std::string("out_time=").size());
+            int hours = 0;
+            int minutes = 0;
+            double seconds = 0.0;
+            if (std::sscanf(timeCode.c_str(), "%d:%d:%lf", &hours, &minutes, &seconds) == 3) {
+                double elapsedSeconds = static_cast<double>(hours) * 3600.0 +
+                                        static_cast<double>(minutes) * 60.0 +
+                                        seconds;
+                double ratio = std::clamp(elapsedSeconds / expectedDurationSeconds, 0.0, 1.0);
+                progress = std::min(99, static_cast<int>(std::lround(ratio * 100.0)));
+            }
+        } else if (line.rfind("progress=end", 0) == 0) {
+            progress = 100;
+        }
         progressValue = progress;
     }
 
@@ -447,15 +462,32 @@ int GUI::getAutomationFrameForPosition(float previewFps, AudioBuffer* activeAudi
     return std::clamp(static_cast<int>(std::lround(currentAudioPosition * (totalFrames - 1))), 0, totalFrames - 1);
 }
 
-int GUI::mapRenderFrameToAutomationFrame(int frameIndex, int totalRenderFrames) const {
+int GUI::mapRenderFrameToAutomationFrame(int frameIndex,
+                                         int totalRenderFrames,
+                                         float normalizedStart,
+                                         float normalizedEnd) const {
     int automationFrames = automationWindow ? automationWindow->getTotalFrames() : 1000;
 
-    if (automationFrames <= 1 || totalRenderFrames <= 1) {
+    if (automationFrames <= 1) {
         return 0;
     }
 
-    double progress = static_cast<double>(frameIndex) / static_cast<double>(totalRenderFrames - 1);
-    return std::clamp(static_cast<int>(std::lround(progress * (automationFrames - 1))), 0, automationFrames - 1);
+    double start = std::clamp(static_cast<double>(normalizedStart), 0.0, 1.0);
+    double end = std::clamp(static_cast<double>(normalizedEnd), 0.0, 1.0);
+    if (end < start) {
+        std::swap(start, end);
+    }
+
+    double timelineProgress = start;
+    if (totalRenderFrames > 1) {
+        double renderProgress = static_cast<double>(frameIndex) / static_cast<double>(totalRenderFrames - 1);
+        renderProgress = std::clamp(renderProgress, 0.0, 1.0);
+        timelineProgress = start + renderProgress * (end - start);
+    }
+
+    return std::clamp(static_cast<int>(std::lround(timelineProgress * (automationFrames - 1))),
+                      0,
+                      automationFrames - 1);
 }
 
 void GUI::setupUI() {
@@ -1898,8 +1930,12 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
     appendProcessingLog("Rendering image loop to: " + outputPath);
 
     // Capture render range for this render pass
-    const float rsStart = renderRangeStart;
-    const float rsRange = std::max(0.001f, renderRangeEnd - renderRangeStart);
+    float rsStart = std::clamp(renderRangeStart, 0.0f, 1.0f);
+    float rsEnd = std::clamp(renderRangeEnd, 0.0f, 1.0f);
+    if (rsEnd < rsStart) {
+        std::swap(rsStart, rsEnd);
+    }
+    const float rsRange = rsEnd - rsStart;
 
     if (audioToUse) {
         size_t audioStart = static_cast<size_t>(rsStart * audioToUse->size());
@@ -1912,12 +1948,14 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
         }
 
         if (audioToUse) {
-            double progress = static_cast<double>(frameIndex) / frameCount;
+            double progress = (frameCount > 1)
+                                  ? (static_cast<double>(frameIndex) / static_cast<double>(frameCount - 1))
+                                  : 0.0;
             size_t audioPos = static_cast<size_t>((rsStart + progress * rsRange) * audioToUse->size());
             audioToUse->setIndex(audioPos);
         }
 
-        applyAutomationAtFrame(mapRenderFrameToAutomationFrame(frameIndex, frameCount));
+        applyAutomationAtFrame(mapRenderFrameToAutomationFrame(frameIndex, frameCount, rsStart, rsEnd));
         cv::Mat processedFrame = effectChain.applyEffects(loadedImage.clone(), audioToUse, fps);
         writer.write(processedFrame);
         currentProcessingFrame = frameIndex + 1;
@@ -1965,17 +2003,19 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
     }
 
     std::string ffmpegProgressPath = outputPath + ".ffmpeg_progress.txt";
-    std::string ffmpegCmd = "ffmpeg -y -hide_banner -loglevel error -i \"" + tempVideoPath +
-        "\" -i \"" + tempAudioPath + "\" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k -shortest "
+    std::string ffmpegCmd = "ffmpeg -y -nostdin -hide_banner -loglevel error -progress pipe:1 -nostats -i \"" + tempVideoPath +
+        "\" -i \"" + tempAudioPath + "\" -map 0:v:0 -map 1:a:0 -c:v libx264 -preset fast -crf 18 -c:a aac -b:a 192k -shortest "
         "-disposition:a:0 default \"" + outputPath + "\"";
 
     // Restart progress bar for muxing stage and update via -progress option.
     totalProcessingFrames = 100;
     currentProcessingFrame = 0;
+    const double muxDurationSeconds = std::max(0.001, static_cast<double>(frameCount) / fps);
     int result = runFfmpegWithProgressPipe(ffmpegCmd,
                                            ffmpegProgressPath,
                                            currentProcessingFrame,
                                            totalProcessingFrames,
+                                           muxDurationSeconds,
                                            [this](const std::string& line) {
                                                appendProcessingLog("FFmpeg: " + line);
                                            });
@@ -1986,12 +2026,14 @@ bool GUI::renderImageLoopWithAutomation(const std::string& outputPath, float dur
     if (result != 0) {
         std::cerr << "FFmpeg muxing failed with code: " << result << std::endl;
         appendProcessingLog("FFmpeg muxing failed with code " + std::to_string(result) + ".");
+        std::error_code restoreEc;
+        std::filesystem::remove(outputPath, restoreEc);
         if (rename(tempVideoPath.c_str(), outputPath.c_str()) != 0) {
             std::cerr << "Failed to restore original video after mux failure. Error: " << strerror(errno) << std::endl;
             appendProcessingLog("Failed to restore original video after FFmpeg failure.");
         }
     } else {
-        remove(tempVideoPath.c_str());
+        std::filesystem::remove(tempVideoPath);
         appendProcessingLog("FFmpeg muxing complete.");
     }
 
@@ -2652,6 +2694,14 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
             
             const bool hasAudioMuxStep = (audioToUse != nullptr);
             totalProcessingFrames = targetFrames + (hasAudioMuxStep ? 1 : 0);
+            syncAutomationTimeline(fps, audioToUse, duration);
+
+            float rsStart = std::clamp(renderRangeStart, 0.0f, 1.0f);
+            float rsEnd = std::clamp(renderRangeEnd, 0.0f, 1.0f);
+            if (rsEnd < rsStart) {
+                std::swap(rsStart, rsEnd);
+            }
+            const float rsRange = rsEnd - rsStart;
             
             std::cout << "Creating VideoWriter for " << targetFrames << " frames at " << fps << " fps" << std::endl;
             std::cout << "Output path: " << outputPath << std::endl;
@@ -2673,7 +2723,7 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
             
             // Reset audio buffer to render range start
             if (audioToUse) {
-                size_t audioStart = static_cast<size_t>(renderRangeStart * audioToUse->size());
+                size_t audioStart = static_cast<size_t>(rsStart * audioToUse->size());
                 audioToUse->setIndex(audioStart);
             }
             
@@ -2695,7 +2745,18 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                 }
                 
                 // Apply automation across the normalized automation timeline.
-                applyAutomationAtFrame(mapRenderFrameToAutomationFrame(frameCount - 1, targetFrames));
+                if (audioToUse) {
+                    const double renderProgress = (targetFrames > 1)
+                        ? (static_cast<double>(frameCount - 1) / static_cast<double>(targetFrames - 1))
+                        : 0.0;
+                    const size_t audioPos = static_cast<size_t>((rsStart + renderProgress * rsRange) * audioToUse->size());
+                    audioToUse->setIndex(audioPos);
+                }
+
+                applyAutomationAtFrame(mapRenderFrameToAutomationFrame(frameCount - 1,
+                                                                        targetFrames,
+                                                                        rsStart,
+                                                                        rsEnd));
                 
                 // Apply effects
                 cv::Mat processedFrame = effectChain.applyEffects(currentFrame, audioToUse, fps);
@@ -2740,18 +2801,20 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                         appendProcessingLog("Muxing audio with FFmpeg...");
                         // Map streams explicitly and set audio as default.
                         std::string ffmpegProgressPath = outputPath + ".ffmpeg_progress.txt";
-                        std::string ffmpegCmd = "ffmpeg -y -hide_banner -loglevel error -i \"" + tempVideoPath +
-                            "\" -i \"" + tempAudioPath + "\" -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k -shortest " +
+                        std::string ffmpegCmd = "ffmpeg -y -nostdin -hide_banner -loglevel error -progress pipe:1 -nostats -i \"" + tempVideoPath +
+                            "\" -i \"" + tempAudioPath + "\" -map 0:v:0 -map 1:a:0 -c:v libx264 -preset fast -crf 18 -c:a aac -b:a 192k -shortest " +
                             "-disposition:a:0 default \"" + outputPath + "\"";
                         std::cout << "Running FFmpeg muxing command" << std::endl;
 
                         // Restart progress bar for muxing stage and update via -progress option.
                         totalProcessingFrames = 100;
                         currentProcessingFrame = 0;
+                        const double muxDurationSeconds = std::max(0.001, static_cast<double>(targetFrames) / fps);
                         int result = runFfmpegWithProgressPipe(ffmpegCmd,
                                                                ffmpegProgressPath,
                                                                currentProcessingFrame,
                                                                totalProcessingFrames,
+                                                               muxDurationSeconds,
                                                                [this](const std::string& line) {
                                                                    appendProcessingLog("FFmpeg: " + line);
                                                                });
@@ -2760,6 +2823,8 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                         if (result != 0) {
                             std::cerr << "FFmpeg muxing failed with code: " << result << std::endl;
                             appendProcessingLog("FFmpeg muxing failed with code " + std::to_string(result) + ".");
+                            std::error_code restoreEc;
+                            std::filesystem::remove(outputPath, restoreEc);
                             if (rename(tempVideoPath.c_str(), outputPath.c_str()) != 0) {
                                 std::cerr << "Failed to restore original video after mux failure. Error: " << strerror(errno) << std::endl;
                                 appendProcessingLog("Failed to restore original video after FFmpeg failure.");
@@ -2767,7 +2832,7 @@ void GUI::processVideoThreaded(const std::string& outputPath, float duration, Au
                         } else {
                             std::cout << "FFmpeg muxing completed successfully" << std::endl;
                             std::cout << "Removing temp video: " << tempVideoPath << std::endl;
-                            remove(tempVideoPath.c_str());
+                            std::filesystem::remove(tempVideoPath);
                             appendProcessingLog("FFmpeg muxing complete.");
                         }
                         std::filesystem::remove(ffmpegProgressPath);

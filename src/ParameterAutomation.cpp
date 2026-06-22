@@ -2,7 +2,7 @@
 #include <algorithm>
 
 void ParameterAutomation::addKeyframe(int frame, float normalizedValue) {
-    keyframes[frame] = normalizedValue;
+    keyframes[frame] = std::clamp(normalizedValue, 0.0f, 1.0f);
 }
 
 void ParameterAutomation::removeKeyframe(int frame) {
@@ -47,7 +47,7 @@ float ParameterAutomation::getValueAtFrame(int frame) const {
 }
 
 float ParameterAutomation::getActualValueAtFrame(int frame) const {
-    float normalized = getValueAtFrame(frame);
+    float normalized = std::clamp(getValueAtFrame(frame), 0.0f, 1.0f);
     // Scale from [0,1] to [minValue, maxValue]
     return minValue + normalized * (maxValue - minValue);
 }

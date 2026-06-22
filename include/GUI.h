@@ -129,7 +129,10 @@ private:
     void syncAutomationTimeline(float previewFps, AudioBuffer* activeAudioBuffer, float durationOverride = -1.0f);
     void updateAutomationGuideMarkers(AudioBuffer* activeAudioBuffer);
     int getAutomationFrameForPosition(float previewFps, AudioBuffer* activeAudioBuffer, float durationOverride = -1.0f) const;
-    int mapRenderFrameToAutomationFrame(int frameIndex, int totalRenderFrames) const;
+    int mapRenderFrameToAutomationFrame(int frameIndex,
+                                        int totalRenderFrames,
+                                        float normalizedStart = 0.0f,
+                                        float normalizedEnd = 1.0f) const;
     void applyAutomationAtFrame(int frameNumber);
     void updateParameterDisplayValues();
     void appendProcessingLog(const std::string& line);
