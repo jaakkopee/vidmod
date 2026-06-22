@@ -34,12 +34,14 @@ Built with TGUI on SFML:
 - **Effect Selection**: Browse and add available effects
 - **Effect Chain Management**: 
   - Add/remove effects
-  - Reorder with move up/down
+  - Reorder with drag and drop
   - Visual chain display
 - **Parameter Configuration**: Dynamic parameter panel for selected effect
 - **File Management**: Load video and audio files via dialogs
 - **Preview System**: Single-frame preview before full processing
 - **Status Display**: Real-time feedback and progress information
+- **Mux Progress Tracking**: FFmpeg timeline-based mux progress from `out_time`
+- **HiDPI Preview Placement**: View-coordinate preview centering for rectangular media
 
 ### 4. Technical Stack
 - **C++17**: Modern C++ features
@@ -53,11 +55,15 @@ Built with TGUI on SFML:
 ## Project Structure
 
 ```
-vidmod/
+VidMod/
 ├── CMakeLists.txt          # Build configuration
 ├── README.md               # Full documentation
 ├── QUICKSTART.md          # 5-minute getting started
 ├── EXAMPLES.md            # Effect chain recipes
+├── AUDIO_MUXING.md        # FFmpeg mux flow and progress behavior
+├── AUDIO_PLAYLIST.md      # Playlist and combined-buffer behavior
+├── generate_test_media.py # Synthetic image/video generator for testing
+├── report_playlist_lengths.py # Playlist duration reporting helper
 ├── build.sh               # Build script
 ├── check_dependencies.sh  # Dependency verification
 ├── .gitignore            # Git ignore rules
@@ -143,8 +149,7 @@ vidmod/
 ./build.sh
 
 # Run
-cd build/bin
-./VidMod
+./build/bin/VidMod
 ```
 
 ### Detailed Steps
@@ -218,6 +223,12 @@ Test each effect individually:
 - Light with dark footage
 - Diffuse with colorful content
 - AudioColor with rhythmic audio
+
+Generate deterministic synthetic media for repeatable tests:
+
+```bash
+python3 generate_test_media.py
+```
 
 ### Chain Testing
 Test effect combinations:

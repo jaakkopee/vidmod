@@ -2,6 +2,22 @@
 
 This document describes some example effect chains you can create in the application.
 
+## Reproducible Test Inputs
+
+Generate deterministic themed test media before trying the chains below:
+
+```bash
+python3 generate_test_media.py
+```
+
+Recommended quick-start files:
+- `test_media/images/vidmod_test_sunset_wide_1920x1080.png`
+- `test_media/images/vidmod_test_ocean_tall_1080x1920.png`
+- `test_media/images/vidmod_test_neon_ultrawide_2048x768.png`
+- `test_media/videos/vidmod_test_video_sunset.mp4`
+- `test_media/videos/vidmod_test_video_ocean.mp4`
+- `test_media/videos/vidmod_test_video_neon.mp4`
+
 ## By Algorithm Family
 
 This document is organized by the kind of processing each effect performs, rather than by a vague "basic vs creative" split.

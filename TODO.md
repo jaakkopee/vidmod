@@ -2,10 +2,10 @@
 
 ## High Priority
 
-- [ ] **Progress Bar**: Add visual feedback during video processing
-  - Show current frame / total frames
-  - Estimated time remaining
-  - Cancel button to abort processing
+- [x] **Progress Bar**: Add visual feedback during video processing and FFmpeg muxing
+  - Show current progress / total
+  - Muxing progress follows FFmpeg timeline output
+  - Stop workflow available via processing controls
 
 - [ ] **Keyboard Shortcuts**: Add hotkeys for common actions
   - Ctrl+O: Load video
@@ -143,6 +143,11 @@
   - How to add new effects
   - Architecture overview
   - Code organization guide
+
+- [x] **Docs Refresh**
+  - Document FFmpeg timeline-driven mux progress
+  - Document HiDPI-safe preview placement updates
+  - Document synthetic test media generator workflow
 
 ## User Experience
 

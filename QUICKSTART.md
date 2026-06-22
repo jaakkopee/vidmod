@@ -28,11 +28,33 @@ sudo apt-get install cmake build-essential libsfml-dev libtgui-dev \
 
 ## 4. Run the Application
 ```bash
-cd build/bin
-./VidMod
+./build/bin/VidMod
 ```
 
-## 5. Process Your First Video
+Alternative run path (manual CMake build):
+
+```bash
+cd build
+./bin/VidMod
+```
+
+## 5. Generate Test Media (Optional but Recommended)
+
+```bash
+python3 -m pip install numpy opencv-python
+
+# 3 themed images + 3 themed videos (3 minutes each)
+python3 generate_test_media.py
+
+# faster smoke test
+python3 generate_test_media.py --duration 12 --fps 24 --video-size 960x540
+```
+
+Generated files:
+- `test_media/images`
+- `test_media/videos`
+
+## 6. Process Your First Video
 
 ### In the GUI:
 
@@ -46,6 +68,7 @@ cd build/bin
    - Click "FFT" in the "Available Effects" list
    - Click "Add to Chain"
    - The effect appears in the "Effect Chain" list
+   - Drag and drop items in the chain list to reorder the stack
 
 3. **Configure** (optional):
    - Click on "1. FFT" in the chain list
@@ -113,6 +136,11 @@ Suggested first-pass values:
 - Lower `sim_scale` for CAGlow and MoldTrails
 - Lower `agent_count` for MoldTrails
 
+### "Audio muxing progress jumps to 99% too early"
+- Update to latest code in this repository
+- Mux progress now follows FFmpeg `out_time` timeline
+- If source audio has a long silent tail, muxing can still take time near the end (expected)
+
 ### "Audio does not seem to affect effects"
 - Ensure an audio file or playlist track is loaded
 - Increase each effect's `audio_gain` toward `0.8 - 1.2`
@@ -133,4 +161,4 @@ Suggested first-pass values:
 - Experiment with different effect combinations
 - Try different parameter values
 
-Happy video processing! 🎥✨
+Happy video processing!

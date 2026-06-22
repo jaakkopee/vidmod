@@ -15,6 +15,14 @@ The `AudioPlaylist` class manages multiple audio files and combines them into a 
 - Playlist audio can be used for both preview and full render paths.
 - When a playlist is available, it takes precedence over single-file media audio.
 - Audio-reactive effects (including FFT, AudioColor, CAGlow, BitplaneReactor, and MoldTrails) consume synchronized slices from this shared buffer.
+- Render-range mapping keeps automation and audio traversal aligned across image-loop and video render paths.
+
+## Silence Tail Considerations
+
+- Long silent tails in source tracks are preserved in the combined playlist buffer.
+- This can make final renders/muxing longer even when audible content has mostly ended.
+- Use `report_playlist_lengths.py` to inspect expected aggregate duration before long renders.
+- Consider trimming source audio if shorter render turnaround is needed.
 
 ## Example Usage
 

@@ -9,6 +9,9 @@ A C++ application for building chained video effects driven by image processing,
 - **Audio-Reactive**: Effects can respond to RMS or FFT-derived band energy
 - **Real-time Preview**: Preview individual frames with effects applied
 - **Automation**: Per-parameter timeline automation across effect chains
+- **Audio Muxing**: FFmpeg-based muxing with timeline-aware progress updates
+- **Preview Layout**: Right-side preview centering works reliably for rectangular media on HiDPI displays
+- **Test Media Generator**: Python utility for creating synthetic image/video inputs
 - **Save/Load Chains**: JSON serialization for effect setups
 
 ## Algorithm Families
@@ -329,17 +332,20 @@ sudo apt-get install libsfml-dev libtgui-dev libfftw3-dev libopencv-dev libsndfi
 ## Building
 
 ```bash
-# Create build directory
-mkdir build
+# Recommended build script
+./build.sh
+
+# Run
+./build/bin/VidMod
+```
+
+Alternative manual build:
+
+```bash
+mkdir -p build
 cd build
-
-# Configure with CMake
 cmake ..
-
-# Build
-make
-
-# The executable will be in build/bin/
+cmake --build .
 ./bin/VidMod
 ```
 
@@ -347,7 +353,7 @@ make
 
 1. **Launch the application**:
    ```bash
-   ./bin/VidMod
+   ./build/bin/VidMod
    ```
 
 2. **Load Media Files**:
@@ -357,7 +363,7 @@ make
 3. **Build Effect Chain**:
    - Select an effect from "Available Effects" list
    - Click "Add to Chain" to add it to the processing chain
-   - Use "Move Up"/"Move Down" to reorder effects
+   - Drag and drop in the chain list to reorder effects
    - Use "Remove" to delete selected effect
 
 4. **Configure Parameters**:
@@ -372,7 +378,27 @@ make
 6. **Process Video**:
    - Click "Process Video"
    - Enter output file path when prompted
-   - Wait for processing to complete
+   - Wait for processing and FFmpeg muxing to complete
+
+## Test Media Generator
+
+Use the included script to generate deterministic test inputs for QA and effect tuning.
+
+```bash
+# Install dependencies for generator
+python3 -m pip install numpy opencv-python
+
+# Generate three themed images and three themed videos (3 minutes each)
+python3 generate_test_media.py
+
+# Faster smoke test
+python3 generate_test_media.py --duration 12 --fps 24 --video-size 960x540
+```
+
+Output folders:
+
+- `test_media/images`
+- `test_media/videos`
 
 ## Notes On Parameters
 
@@ -383,32 +409,61 @@ make
 ## Project Structure
 
 ```
-vidmod/
+VidMod/
 ├── CMakeLists.txt
 ├── README.md
+├── QUICKSTART.md
+├── EXAMPLES.md
+├── AUDIO_MUXING.md
+├── AUDIO_PLAYLIST.md
+├── PROJECT_SUMMARY.md
+├── generate_test_media.py
+├── report_playlist_lengths.py
 ├── include/
 │   ├── AudioBuffer.h
 │   ├── AudioColorEffect.h
+│   ├── AudioPlaylist.h
+│   ├── AutomationWindow.h
+│   ├── BitplaneReactorEffect.h
+│   ├── CAGlowEffect.h
 │   ├── CircularBuffer.h
+│   ├── CircleQuiltEffect.h
 │   ├── DiffuseEffect.h
+│   ├── EdgeInkEffect.h
 │   ├── Effect.h
 │   ├── EffectChain.h
 │   ├── FFTEffect.h
+│   ├── FractalEffect.h
 │   ├── GUI.h
 │   ├── LightEffect.h
+│   ├── MoldTrailsEffect.h
+│   ├── NeuralCircleEffect.h
+│   ├── NeuralTileEffect.h
+│   ├── ParameterAutomation.h
 │   ├── ShadowEffect.h
 │   ├── VideoBuffer.h
 │   └── VideoProcessor.h
 └── src/
     ├── AudioBuffer.cpp
     ├── AudioColorEffect.cpp
+   ├── AudioPlaylist.cpp
+   ├── AutomationWindow.cpp
+   ├── BitplaneReactorEffect.cpp
+   ├── CAGlowEffect.cpp
     ├── CircularBuffer.cpp
+   ├── CircleQuiltEffect.cpp
     ├── DiffuseEffect.cpp
+   ├── EdgeInkEffect.cpp
     ├── Effect.cpp
     ├── EffectChain.cpp
     ├── FFTEffect.cpp
+   ├── FractalEffect.cpp
     ├── GUI.cpp
     ├── LightEffect.cpp
+   ├── MoldTrailsEffect.cpp
+   ├── NeuralCircleEffect.cpp
+   ├── NeuralTileEffect.cpp
+   ├── ParameterAutomation.cpp
     ├── ShadowEffect.cpp
     ├── VideoBuffer.cpp
     ├── VideoProcessor.cpp
@@ -420,6 +475,7 @@ vidmod/
 - **Memory Usage**: The application loads entire videos into memory for processing. Large videos may require significant RAM.
 - **Performance**: Spatial filters, fractal rendering, and iterative grid effects can be significantly heavier than simple channel modulation.
 - **File Formats**: Supports common video formats (MP4, AVI, MOV) and audio formats (WAV, FLAC, OGG).
+- **Mux Progress**: FFmpeg progress is tracked from `out_time` against expected mux duration, so long silent tails no longer cause fake near-complete progress.
 
 ## Future Enhancements
 

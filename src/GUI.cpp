@@ -2536,7 +2536,19 @@ int GUI::getListBoxIndexAtPosition(const tgui::ListBox::Ptr& listBox, sf::Vector
     }
 
     const float relativeY = mousePos.y - pos.y;
-    const int topItemOffset = static_cast<int>(listBox->getScrollbar()->getValue());
+
+    int topItemOffset = 0;
+    if (auto scrollbar = listBox->getScrollbar()) {
+        const float scrollValue = scrollbar->getValue();
+        const float scrollMaximum = scrollbar->getMaximum();
+        // TGUI may expose scrollbar value either as item offset or pixel offset.
+        if (scrollMaximum > static_cast<float>(itemCount) && itemHeight > 0.0f) {
+            topItemOffset = static_cast<int>(scrollValue / itemHeight);
+        } else {
+            topItemOffset = static_cast<int>(scrollValue);
+        }
+    }
+
     const int index = topItemOffset + static_cast<int>(relativeY / itemHeight);
     return std::clamp(index, 0, itemCount - 1);
 }

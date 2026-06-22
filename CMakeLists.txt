@@ -85,8 +85,8 @@ endif()
 
 # Set output directory
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    OUTPUT_NAME vidmod
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    OUTPUT_NAME VidMod
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
 # Enable warnings
