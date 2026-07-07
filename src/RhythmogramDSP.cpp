@@ -12,27 +12,33 @@
 #include <algorithm>
 #include <numeric>
 
+// Number of gammatone filterbank channels in the peripheral model.
+// Defined here (outside the anonymous namespace) so that both
+// RhythmogramAnalyzerImpl::CHAN_COUNT and RhythmogramDSP::pooledBaseline
+// can reference the same named constant without duplication.
+static constexpr int RHYTHMOGRAM_CHAN_COUNT = 64;
+
 namespace {
 
 // ===========================================================================
 // Minimal complex arithmetic – used only at coefficient design time
 // ===========================================================================
-struct CD {
+struct ComplexDouble {
     double r, i;
-    CD(double r = 0.0, double i = 0.0) : r(r), i(i) {}
-    CD operator+(CD b) const { return {r + b.r, i + b.i}; }
-    CD operator-(CD b) const { return {r - b.r, i - b.i}; }
-    CD operator*(CD b) const {
+    ComplexDouble(double r = 0.0, double i = 0.0) : r(r), i(i) {}
+    ComplexDouble operator+(ComplexDouble b) const { return {r + b.r, i + b.i}; }
+    ComplexDouble operator-(ComplexDouble b) const { return {r - b.r, i - b.i}; }
+    ComplexDouble operator*(ComplexDouble b) const {
         return {r * b.r - i * b.i, r * b.i + i * b.r};
     }
-    CD operator/(CD b) const {
+    ComplexDouble operator/(ComplexDouble b) const {
         double d = b.r * b.r + b.i * b.i;
         return {(r * b.r + i * b.i) / d, (i * b.r - r * b.i) / d};
     }
     double magnitude() const { return std::sqrt(r * r + i * i); }
 };
 
-static CD cexpC(CD z) {
+static ComplexDouble cexpC(ComplexDouble z) {
     double e = std::exp(z.r);
     return {e * std::cos(z.i), e * std::sin(z.i)};
 }
@@ -90,22 +96,22 @@ public:
 
         // Gain normalisation (Slaney 1993, evaluated at the centre frequency)
         double omega = 2.0 * cf * M_PI * T;
-        CD e4i  = cexpC({0.0, 4.0 * omega});
-        CD e2i  = cexpC({-bw * T, 2.0 * omega});
-        CD twoT = {2.0 * T, 0.0};
+        ComplexDouble e4i  = cexpC({0.0, 4.0 * omega});
+        ComplexDouble e2i  = cexpC({-bw * T, 2.0 * omega});
+        ComplexDouble twoT = {2.0 * T, 0.0};
 
-        auto zeroTerm = [&](double sign, double sqrtVal) -> CD {
-            CD inner = {cosArg + sign * sqrtVal * sinArg, 0.0};
-            return CD{-1.0, 0.0} * (twoT * e4i) + twoT * e2i * inner;
+        auto zeroTerm = [&](double sign, double sqrtVal) -> ComplexDouble {
+            ComplexDouble inner = {cosArg + sign * sqrtVal * sinArg, 0.0};
+            return ComplexDouble{-1.0, 0.0} * (twoT * e4i) + twoT * e2i * inner;
         };
-        CD zeros = zeroTerm(-1.0, sqrtM) * zeroTerm(+1.0, sqrtM)
+        ComplexDouble zeros = zeroTerm(-1.0, sqrtM) * zeroTerm(+1.0, sqrtM)
                  * zeroTerm(-1.0, sqrtP) * zeroTerm(+1.0, sqrtP);
 
-        CD poleInner =
-            CD{-2.0 / std::exp(2.0 * bw * T), 0.0}
-            - CD{2.0, 0.0} * e4i
-            + CD{2.0, 0.0} * (CD{1.0, 0.0} + e4i) / CD{expBT, 0.0};
-        CD poles = poleInner * poleInner * poleInner * poleInner;
+        ComplexDouble poleInner =
+            ComplexDouble{-2.0 / std::exp(2.0 * bw * T), 0.0}
+            - ComplexDouble{2.0, 0.0} * e4i
+            + ComplexDouble{2.0, 0.0} * (ComplexDouble{1.0, 0.0} + e4i) / ComplexDouble{expBT, 0.0};
+        ComplexDouble poles = poleInner * poleInner * poleInner * poleInner;
         double gain = (zeros / poles).magnitude();
 
         for (int s = 0; s < STAGES; s++) {
@@ -366,7 +372,7 @@ private:
 // (UNIT_COUNT per-unit maxima) every HOP_SIZE input samples.
 // ===========================================================================
 class RhythmogramAnalyzerImpl {
-    static constexpr int    CHAN_COUNT = 64;
+    static constexpr int    CHAN_COUNT = RHYTHMOGRAM_CHAN_COUNT;
     static constexpr double F_MIN     = 100.0;
     static constexpr double F_MAX     = 5000.0;
     static constexpr double TAU_MIN   = 0.010;
@@ -450,7 +456,7 @@ struct RhythmogramDSPState {
 // ===========================================================================
 RhythmogramDSP::RhythmogramDSP(double sampleRate)
     : pooledBaseline(
-          static_cast<double>(64) // CHAN_COUNT
+          static_cast<double>(RHYTHMOGRAM_CHAN_COUNT)
           * MeddisHairCell::spontaneousFiringLevel())
     , state_(std::make_unique<RhythmogramDSPState>(sampleRate))
 {}
