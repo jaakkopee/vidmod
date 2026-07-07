@@ -10,6 +10,11 @@
 #include "CAGlowEffect.h"
 #include "BitplaneReactorEffect.h"
 #include "MoldTrailsEffect.h"
+#include "NeuralTileEffect.h"
+#include "NeuralCircleEffect.h"
+#include "RhythmoBrightnessEffect.h"
+#include "RhythmoHueEffect.h"
+#include "RhythmoSaturationEffect.h"
 #include "RhythmoShadowEffect.h"
 #include "RhythmoLightEffect.h"
 #include <iostream>
@@ -163,15 +168,22 @@ std::string EffectChain::toJsonString() const {
 bool EffectChain::fromJsonString(const std::string& jsonStr) {
     try {
         json j = json::parse(jsonStr);
-        
-        // Clear existing effects
-        clear();
-        
+
+        // Newer preset files bundle the chain with automation data as
+        // { "effectChain": {...}, "automation": {...} }; older files store the
+        // chain object at the top level. Accept both.
+        if (j.contains("effectChain") && j["effectChain"].is_object()) {
+            j = j["effectChain"];
+        }
+
         if (!j.contains("effects") || !j["effects"].is_array()) {
             std::cerr << "Invalid JSON: missing 'effects' array" << std::endl;
             return false;
         }
-        
+
+        // Build into a temporary list so a failed load leaves the current chain intact
+        std::vector<std::shared_ptr<Effect>> loadedEffects;
+
         for (const auto& effectJson : j["effects"]) {
             if (!effectJson.contains("name")) {
                 std::cerr << "Effect missing 'name' field" << std::endl;
@@ -204,6 +216,16 @@ bool EffectChain::fromJsonString(const std::string& jsonStr) {
                 effect = std::make_shared<BitplaneReactorEffect>();
             } else if (name == "MoldTrails") {
                 effect = std::make_shared<MoldTrailsEffect>();
+            } else if (name == "NeuralTile") {
+                effect = std::make_shared<NeuralTileEffect>();
+            } else if (name == "NeuralCircle") {
+                effect = std::make_shared<NeuralCircleEffect>();
+            } else if (name == "RhythmoBrightness") {
+                effect = std::make_shared<RhythmoBrightnessEffect>();
+            } else if (name == "RhythmoHue") {
+                effect = std::make_shared<RhythmoHueEffect>();
+            } else if (name == "RhythmoSaturation") {
+                effect = std::make_shared<RhythmoSaturationEffect>();
             } else if (name == "RhythmoShadow") {
                 effect = std::make_shared<RhythmoShadowEffect>();
             } else if (name == "RhythmoLight") {
@@ -213,18 +235,24 @@ bool EffectChain::fromJsonString(const std::string& jsonStr) {
                 continue;
             }
             
-            // Set parameters
+            // Set parameters; the constructor defaults above keep presets from
+            // older versions working when they lack newly added parameters, and
+            // booleans from hand-edited files are accepted as 0/1.
             if (effectJson.contains("parameters") && effectJson["parameters"].is_object()) {
                 for (auto& [key, value] : effectJson["parameters"].items()) {
                     if (value.is_number()) {
                         effect->setParameter(key, value.get<float>());
+                    } else if (value.is_boolean()) {
+                        effect->setParameter(key, value.get<bool>() ? 1.0f : 0.0f);
                     }
                 }
             }
-            
-            addEffect(effect);
+
+            loadedEffects.push_back(effect);
         }
-        
+
+        effects = std::move(loadedEffects);
+
         std::cout << "Loaded " << effects.size() << " effects from JSON" << std::endl;
         return true;
     } catch (const std::exception& e) {
