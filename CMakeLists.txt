@@ -56,6 +56,10 @@ set(SOURCES
     src/MoldTrailsEffect.cpp
     src/NeuralTileEffect.cpp
     src/NeuralCircleEffect.cpp
+    src/RhythmogramDSP.cpp
+    src/RhythmoBrightnessEffect.cpp
+    src/RhythmoHueEffect.cpp
+    src/RhythmoSaturationEffect.cpp
     src/EffectChain.cpp
     src/VideoProcessor.cpp
     src/GUI.cpp

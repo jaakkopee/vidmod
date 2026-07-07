@@ -5,11 +5,12 @@
 
 class RhythmogramDSP;
 
-// RhythmoBrightnessEffect
+// RhythmoSaturationEffect
 //
 // Uses the rhythmogram pipeline to derive a per-frame rhythmic energy value
-// and scales the brightness of every pixel by (1 + brightness_gain × energy).
-class RhythmoBrightnessEffect : public Effect {
+// and scales the saturation of every pixel by (1 + saturation_gain × energy).
+// Saturates at the maximum OpenCV HSV saturation value (255).
+class RhythmoSaturationEffect : public Effect {
 private:
     std::unique_ptr<RhythmogramDSP> dsp_;
     int lastSampleRate_;
@@ -17,17 +18,17 @@ private:
     void ensureDSP(int sampleRate);
 
 public:
-    RhythmoBrightnessEffect();
-    ~RhythmoBrightnessEffect();
+    RhythmoSaturationEffect();
+    ~RhythmoSaturationEffect();
 
     cv::Mat apply(const cv::Mat& frame, AudioBuffer* audioBuffer, float videoFps) override;
 
     std::vector<std::string> getParameterNames() const override {
-        return {"brightness_gain", "audio_gain"};
+        return {"saturation_gain", "audio_gain"};
     }
 
     float getParameterNominalMax(const std::string& name) const override {
-        if (name == "brightness_gain") return 5.0f;
+        if (name == "saturation_gain") return 5.0f;
         return Effect::getParameterNominalMax(name);
     }
 };
