@@ -45,9 +45,16 @@ static ComplexDouble cexpC(ComplexDouble z) {
 
 // ===========================================================================
 // ERB-scale helpers  (Glasberg & Moore 1990)
+//
+// ERB rate formula:  E(f) = ERB_A · log10(ERB_B · f + 1)
+//   ERB_A = 21.4  – scaling coefficient from Glasberg & Moore (1990)
+//   ERB_B = 0.00437 – pole-frequency ratio constant
 // ===========================================================================
-static double erbRate(double f) { return 21.4 * std::log10(0.00437 * f + 1.0); }
-static double erbHz(double r)   { return (std::pow(10.0, r / 21.4) - 1.0) / 0.00437; }
+static constexpr double ERB_A = 21.4;    // Glasberg & Moore (1990) scaling factor
+static constexpr double ERB_B = 0.00437; // Glasberg & Moore (1990) frequency constant
+
+static double erbRate(double f) { return ERB_A * std::log10(ERB_B * f + 1.0); }
+static double erbHz(double r)   { return (std::pow(10.0, r / ERB_A) - 1.0) / ERB_B; }
 
 static std::vector<double> erbCenterFreqs(int count, double fMin, double fMax) {
     if (count <= 0) return {};
@@ -74,8 +81,11 @@ public:
 
     GammatoneFilter(double cf, double fs) {
         double T      = 1.0 / fs;
-        double erb    = 24.7 * (0.00437 * cf + 1.0);
-        double bw     = 1.019 * 2.0 * M_PI * erb;
+        // ERB bandwidth at cf (Glasberg & Moore 1990)
+        double erb    = 24.7 * (ERB_B * cf + 1.0);
+        // 1.019: bandwidth correction factor from Slaney (1993) Apple TR 35
+        static constexpr double SLANEY_BW_CORRECTION = 1.019;
+        double bw     = SLANEY_BW_CORRECTION * 2.0 * M_PI * erb;
         double expBT  = std::exp(bw * T);
         double cosArg = std::cos(2.0 * cf * M_PI * T);
         double sinArg = std::sin(2.0 * cf * M_PI * T);
@@ -207,15 +217,16 @@ private:
 // without drift.
 // ===========================================================================
 class MeddisHairCell {
-    static constexpr double A = 5.0;
-    static constexpr double B = 300.0;
-    static constexpr double G = 2000.0;
-    static constexpr double Y = 5.05;
-    static constexpr double L = 2500.0;
-    static constexpr double R = 6580.0;
-    static constexpr double X = 66.31;
-    static constexpr double H = 50000.0;
-    static constexpr double M = 1.0;
+    // Meddis (1988) / Slaney Auditory Toolbox parameter set.
+    static constexpr double A = 5.0;       // permeability constant (s^-1)
+    static constexpr double B = 300.0;     // calcium threshold constant (s^-1)
+    static constexpr double G = 2000.0;    // maximum permeability (s^-1)
+    static constexpr double Y = 5.05;      // replenishment rate (s^-1)
+    static constexpr double L = 2500.0;    // loss rate (s^-1)
+    static constexpr double R = 6580.0;    // reuptake rate (s^-1)
+    static constexpr double X = 66.31;     // reprocessing rate (s^-1)
+    static constexpr double H = 50000.0;   // output gain constant
+    static constexpr double M = 1.0;       // total neurotransmitter (normalised)
 
 public:
     explicit MeddisHairCell(double sampleRate) : sampleRate_(sampleRate) { reset(); }
@@ -261,6 +272,9 @@ private:
 // ===========================================================================
 class PeripheralChain {
 public:
+    // Pressure scaling factor applied before the peripheral model.
+    // Normalised audio (±1) is far below the Pascal units the Meddis model
+    // expects; this gain brings the signal into the model's working range.
     static constexpr float PRESSURE_GAIN = 100.0f;
 
     PeripheralChain(double sampleRate, int channelCount, double fMin, double fMax)
