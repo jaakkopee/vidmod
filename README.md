@@ -23,6 +23,9 @@ VidMod is not a single FFT effect processor. The current effects fall into sever
 | --- | --- | --- |
 | FFT | Frequency-domain audio analysis + channel modulation | Window audio, FFT bands, add energy to B/G/R channels |
 | AudioColor | Frequency-domain audio analysis + color transform | Map multi-band audio energy into RGB or HSV transforms |
+| RhythmoBrightness | Rhythmogram-derived tonal modulation | Convert rhythmic energy into whole-frame brightness scaling |
+| RhythmoHue | Rhythmogram-derived tonal modulation | Convert rhythmic energy into whole-frame hue rotation |
+| RhythmoSaturation | Rhythmogram-derived tonal modulation | Convert rhythmic energy into whole-frame saturation scaling |
 | Shadow | Spatial morphology | Erode image to local minima, then blend into original |
 | Light | Spatial morphology | Dilate image to local maxima, then blend into original |
 | Diffuse | Iterative spatial filtering | Repeated box blur with configurable kernel growth and decay |
@@ -89,6 +92,25 @@ if mode == HSV:
 - `color_coeff`, `mode`
 - `hue_strength`, `saturation_strength`, `value_strength`
 - `audio_gain`
+
+### RhythmoBrightness / RhythmoHue / RhythmoSaturation
+**Type**: Rhythmogram-based audio analysis + global color modulation
+
+**Operation**:
+- Run a rhythmogram front-end on the current audio slice
+- Use pre-emphasis, a gammatone filterbank, Meddis-style hair-cell modeling, and a multiscale memory bank to estimate rhythmic energy
+- Normalize the pooled energy and use it as a per-frame modulation value
+- Apply that value to brightness, hue rotation, or saturation depending on the selected effect
+
+**Shared DSP model**:
+- `RhythmogramDSP` emits 48-unit hop columns from a Todd & Brown-style rhythmogram pipeline
+- Energy is normalized against a pooled spontaneous baseline before effect-specific scaling
+- `audio_gain` controls the final rhythmic response strength across all three effects
+
+**Main parameters**:
+- `RhythmoBrightness`: `brightness_gain`, `audio_gain`
+- `RhythmoHue`: `hue_shift_gain`, `audio_gain`
+- `RhythmoSaturation`: `saturation_gain`, `audio_gain`
 
 ### Shadow
 **Type**: Spatial morphology
