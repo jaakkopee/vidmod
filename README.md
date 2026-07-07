@@ -26,6 +26,8 @@ VidMod is not a single FFT effect processor. The current effects fall into sever
 | RhythmoBrightness | Rhythmogram-derived tonal modulation | Convert rhythmic energy into whole-frame brightness scaling |
 | RhythmoHue | Rhythmogram-derived tonal modulation | Convert rhythmic energy into whole-frame hue rotation |
 | RhythmoSaturation | Rhythmogram-derived tonal modulation | Convert rhythmic energy into whole-frame saturation scaling |
+| RhythmoShadow | Rhythmogram-driven spatial morphology | Project rhythmic energy onto local minima via erosion blend |
+| RhythmoLight | Rhythmogram-driven spatial morphology | Project rhythmic energy onto local maxima via dilation blend |
 | Shadow | Spatial morphology | Erode image to local minima, then blend into original |
 | Light | Spatial morphology | Dilate image to local maxima, then blend into original |
 | Diffuse | Iterative spatial filtering | Repeated box blur with configurable kernel growth and decay |
@@ -111,6 +113,26 @@ if mode == HSV:
 - `RhythmoBrightness`: `brightness_gain`, `audio_gain`
 - `RhythmoHue`: `hue_shift_gain`, `audio_gain`
 - `RhythmoSaturation`: `saturation_gain`, `audio_gain`
+
+### RhythmoShadow / RhythmoLight
+**Type**: Rhythmogram-based audio analysis + spatial morphology
+
+**Operation**:
+- Run the shared rhythmogram front-end on the current audio slice to estimate rhythmic energy
+- Erode (RhythmoShadow) or dilate (RhythmoLight) the frame to a local-minima / local-maxima image, with the neighborhood set by `kernel_size` and `morph_iterations`
+- Blend the extrema image into the source with a coefficient of `shadow_gain`/`light_gain` × energy, so rhythmic pulses deepen shadows or flare highlights around the image's local extrema
+
+**Pseudocode**:
+```text
+energy = rhythmogram_energy(audio_chunk, audio_gain)
+extrema = erode_or_dilate(frame, kernel_size, morph_iterations)
+coeff = clamp(gain * energy, 0, 1)
+output = lerp(frame, extrema, coeff)
+```
+
+**Main parameters**:
+- `RhythmoShadow`: `shadow_gain`, `kernel_size`, `morph_iterations`, `audio_gain`
+- `RhythmoLight`: `light_gain`, `kernel_size`, `morph_iterations`, `audio_gain`
 
 ### Shadow
 **Type**: Spatial morphology

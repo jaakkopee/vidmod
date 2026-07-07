@@ -5,6 +5,8 @@
 #include "RhythmoBrightnessEffect.h"
 #include "RhythmoHueEffect.h"
 #include "RhythmoSaturationEffect.h"
+#include "RhythmoShadowEffect.h"
+#include "RhythmoLightEffect.h"
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -600,6 +602,8 @@ void GUI::setupUI() {
     effectList->addItem("RhythmoBrightness");
     effectList->addItem("RhythmoHue");
     effectList->addItem("RhythmoSaturation");
+    effectList->addItem("RhythmoShadow");
+    effectList->addItem("RhythmoLight");
     effectList->getRenderer()->setBackgroundColor(widgetFill);
     effectList->getRenderer()->setTextColor(widgetText);
     effectList->getRenderer()->setSelectedBackgroundColor(buttonFill);
@@ -1084,6 +1088,10 @@ void GUI::addEffectToChain(const std::string& effectName) {
         effect = std::make_shared<RhythmoHueEffect>();
     } else if (effectName == "RhythmoSaturation") {
         effect = std::make_shared<RhythmoSaturationEffect>();
+    } else if (effectName == "RhythmoShadow") {
+        effect = std::make_shared<RhythmoShadowEffect>();
+    } else if (effectName == "RhythmoLight") {
+        effect = std::make_shared<RhythmoLightEffect>();
     }
     
     if (effect) {

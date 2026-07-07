@@ -60,6 +60,8 @@ set(SOURCES
     src/RhythmoBrightnessEffect.cpp
     src/RhythmoHueEffect.cpp
     src/RhythmoSaturationEffect.cpp
+    src/RhythmoShadowEffect.cpp
+    src/RhythmoLightEffect.cpp
     src/EffectChain.cpp
     src/VideoProcessor.cpp
     src/GUI.cpp

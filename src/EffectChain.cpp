@@ -10,6 +10,8 @@
 #include "CAGlowEffect.h"
 #include "BitplaneReactorEffect.h"
 #include "MoldTrailsEffect.h"
+#include "RhythmoShadowEffect.h"
+#include "RhythmoLightEffect.h"
 #include <iostream>
 #include <algorithm>
 #include <fstream>
@@ -202,6 +204,10 @@ bool EffectChain::fromJsonString(const std::string& jsonStr) {
                 effect = std::make_shared<BitplaneReactorEffect>();
             } else if (name == "MoldTrails") {
                 effect = std::make_shared<MoldTrailsEffect>();
+            } else if (name == "RhythmoShadow") {
+                effect = std::make_shared<RhythmoShadowEffect>();
+            } else if (name == "RhythmoLight") {
+                effect = std::make_shared<RhythmoLightEffect>();
             } else {
                 std::cerr << "Unknown effect type: " << name << std::endl;
                 continue;
