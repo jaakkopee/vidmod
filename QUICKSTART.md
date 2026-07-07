@@ -99,6 +99,8 @@ Recently added effects you can test immediately:
 - `RhythmoBrightness`: Rhythmogram-driven whole-frame brightness lift
 - `RhythmoHue`: Rhythmogram-driven hue rotation
 - `RhythmoSaturation`: Rhythmogram-driven saturation boost
+- `RhythmoShadow`: Rhythmogram-driven shadow deepening around local minima
+- `RhythmoLight`: Rhythmogram-driven highlight flare around local maxima
 
 Suggested first-pass values:
 
@@ -108,6 +110,8 @@ Suggested first-pass values:
 - RhythmoBrightness: `brightness_gain=1.0`, `audio_gain=0.8`
 - RhythmoHue: `hue_shift_gain=24`, `audio_gain=0.7`
 - RhythmoSaturation: `saturation_gain=1.0`, `audio_gain=0.8`
+- RhythmoShadow: `shadow_gain=1.0`, `kernel_size=5`, `morph_iterations=1`, `audio_gain=0.8`
+- RhythmoLight: `light_gain=1.0`, `kernel_size=5`, `morph_iterations=1`, `audio_gain=0.8`
 
 These three effects respond to the shared rhythmogram pipeline, so they work best when an audio file is loaded and the track has a steady pulse.
 
