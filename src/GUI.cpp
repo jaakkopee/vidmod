@@ -2,6 +2,9 @@
 #include "VideoBuffer.h"
 #include "NeuralTileEffect.h"
 #include "NeuralCircleEffect.h"
+#include "RhythmoBrightnessEffect.h"
+#include "RhythmoHueEffect.h"
+#include "RhythmoSaturationEffect.h"
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -594,6 +597,9 @@ void GUI::setupUI() {
     effectList->addItem("MoldTrails");
     effectList->addItem("NeuralTile");
     effectList->addItem("NeuralCircle");
+    effectList->addItem("RhythmoBrightness");
+    effectList->addItem("RhythmoHue");
+    effectList->addItem("RhythmoSaturation");
     effectList->getRenderer()->setBackgroundColor(widgetFill);
     effectList->getRenderer()->setTextColor(widgetText);
     effectList->getRenderer()->setSelectedBackgroundColor(buttonFill);
@@ -1072,6 +1078,12 @@ void GUI::addEffectToChain(const std::string& effectName) {
         effect = std::make_shared<NeuralTileEffect>();
     } else if (effectName == "NeuralCircle") {
         effect = std::make_shared<NeuralCircleEffect>();
+    } else if (effectName == "RhythmoBrightness") {
+        effect = std::make_shared<RhythmoBrightnessEffect>();
+    } else if (effectName == "RhythmoHue") {
+        effect = std::make_shared<RhythmoHueEffect>();
+    } else if (effectName == "RhythmoSaturation") {
+        effect = std::make_shared<RhythmoSaturationEffect>();
     }
     
     if (effect) {
