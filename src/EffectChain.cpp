@@ -10,6 +10,11 @@
 #include "CAGlowEffect.h"
 #include "BitplaneReactorEffect.h"
 #include "MoldTrailsEffect.h"
+#include "NeuralTileEffect.h"
+#include "NeuralCircleEffect.h"
+#include "RhythmoBrightnessEffect.h"
+#include "RhythmoHueEffect.h"
+#include "RhythmoSaturationEffect.h"
 #include "RhythmoShadowEffect.h"
 #include "RhythmoLightEffect.h"
 #include <iostream>
@@ -204,6 +209,16 @@ bool EffectChain::fromJsonString(const std::string& jsonStr) {
                 effect = std::make_shared<BitplaneReactorEffect>();
             } else if (name == "MoldTrails") {
                 effect = std::make_shared<MoldTrailsEffect>();
+            } else if (name == "NeuralTile") {
+                effect = std::make_shared<NeuralTileEffect>();
+            } else if (name == "NeuralCircle") {
+                effect = std::make_shared<NeuralCircleEffect>();
+            } else if (name == "RhythmoBrightness") {
+                effect = std::make_shared<RhythmoBrightnessEffect>();
+            } else if (name == "RhythmoHue") {
+                effect = std::make_shared<RhythmoHueEffect>();
+            } else if (name == "RhythmoSaturation") {
+                effect = std::make_shared<RhythmoSaturationEffect>();
             } else if (name == "RhythmoShadow") {
                 effect = std::make_shared<RhythmoShadowEffect>();
             } else if (name == "RhythmoLight") {
