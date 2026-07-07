@@ -96,12 +96,20 @@ Recently added effects you can test immediately:
 - `CAGlow`: Cellular-automaton based glow map
 - `BitplaneReactor`: Wolfram CA on image bitplanes
 - `MoldTrails`: Agent trail simulation with persistent state
+- `RhythmoBrightness`: Rhythmogram-driven whole-frame brightness lift
+- `RhythmoHue`: Rhythmogram-driven hue rotation
+- `RhythmoSaturation`: Rhythmogram-driven saturation boost
 
 Suggested first-pass values:
 
 - BitplaneReactor: `wolfram_rule=110`, `bit_lo=2`, `bit_count=2`, `blend=0.6`
 - CAGlow: `iterations=5`, `state_count=6`, `sim_scale=0.35`, `blend=0.55`
 - EdgeInk: `edge_threshold=72`, `blur_size=5`, `blend=0.55`
+- RhythmoBrightness: `brightness_gain=1.0`, `audio_gain=0.8`
+- RhythmoHue: `hue_shift_gain=24`, `audio_gain=0.7`
+- RhythmoSaturation: `saturation_gain=1.0`, `audio_gain=0.8`
+
+These three effects respond to the shared rhythmogram pipeline, so they work best when an audio file is loaded and the track has a steady pulse.
 
 ## Example: Simple Audio-Reactive Video
 

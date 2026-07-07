@@ -177,6 +177,32 @@ This document is organized by the kind of processing each effect performs, rathe
 
 **Result**: Mosaic base with CA-driven texture overlays.
 
+## Rhythmogram-Based Effects
+
+### 16. Pulse Brightness Lift
+**Single Effect**: RhythmoBrightness
+**Parameters**:
+- brightness_gain: 1.2
+- audio_gain: 0.8
+
+**Result**: Whole-frame brightness rises and falls with detected rhythmic energy instead of raw FFT band levels.
+
+### 17. Rhythm Hue Drift
+**Single Effect**: RhythmoHue
+**Parameters**:
+- hue_shift_gain: 24
+- audio_gain: 0.7
+
+**Result**: Colors rotate gently around the hue wheel on sustained rhythmic structure.
+
+### 18. Rhythmo Color Stack
+**Effect Chain**:
+1. RhythmoBrightness (brightness_gain: 0.8, audio_gain: 0.7)
+2. RhythmoSaturation (saturation_gain: 1.0, audio_gain: 0.8)
+3. RhythmoHue (hue_shift_gain: 18, audio_gain: 0.5)
+
+**Result**: A tempo-aware color treatment that brightens, saturates, and rotates hue without relying on per-band FFT coloration.
+
 ## Tips
 
 1. **Start Simple**: Begin with single effects to understand their behavior
